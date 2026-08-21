@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>MDV WIP Builder — Menswear</title>
+<title>MDV WIP Builder — Womenswear</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111;background:#f4f4f4;min-height:100vh}
@@ -70,33 +70,34 @@ const MENS_PREFIXES=['MAN','UNX','ACC','SUN'];
 const SKIP_PO=new Set(['CANCELLED','CANCEL','DELIVERED','SHIPPED','PARTIALLY SHIPPED','SHIPPED UNDER OTHER PO']);
 const SKIP_LINE=new Set(['CANCELLED','CANCEL','DELIVERED','ARRIVED','FULLY SHIPPED','ON HOLD','SHIPPED','PARTIALLY SHIPPED','SHIPPED UNDER OTHER PO']);
 const CP_SKIP=new Set(['Pricing Matrix','Suppliers','freight','TEMPLATE','Reshoots','Production Tracker','AW26 RESTOCKS','MK101 replacements','restock checks','Return Updates','Cancelled','Next SKU','Merch - Roll Up','Template Trial View']);
-const GENDER='mens',GENDER_LABEL='Menswear';
+const GENDER='womens',GENDER_LABEL='Womenswear';
 const WEEK=(()=>{const d=new Date(),j=new Date(d.getFullYear(),0,1);return Math.ceil((((d-j)/86400000)+j.getDay()+1)/7);})();
 const TODAY=new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
 const FIXED_COLS=[
   {ci:1,h:'TYPE',w:14,t:'sys'},{ci:2,h:'RELEASE',w:28,t:'sys'},{ci:3,h:'SKU',w:16,t:'sys'},
   {ci:4,h:'PRODUCT NAME',w:34,t:'sys'},{ci:5,h:'COLOUR',w:14,t:'sys'},{ci:6,h:'MBF FABRIC CODE',w:18,t:'sys'},
-  {ci:7,h:'COST ($)',w:10,t:'sys'},{ci:8,h:'COST APPROVED?',w:13,t:'sys'},{ci:9,h:'PO NUMBER (CP)',w:15,t:'sys'},
-  {ci:10,h:'AIRTABLE POs & STATUS',w:34,t:'sys'},{ci:11,h:'TP SEND DATE',w:13,t:'sys'},
-  {ci:12,h:'1ST SAMPLE FABRIC / COLOUR',w:20,t:'static'},{ci:13,h:'1ST SAMPLE SENT DATE',w:15,t:'static'},
-  {ci:14,h:'1ST SAMPLE COMMENTS SENT DATE',w:20,t:'sys'},
-  {ci:15,h:'2ND SAMPLE FABRIC / COLOUR',w:20,t:'static'},{ci:16,h:'2ND SAMPLE SENT DATE',w:15,t:'static'},
-  {ci:17,h:'2ND SAMPLE COMMENTS SENT DATE',w:20,t:'sys'},
-  {ci:18,h:'3RD SAMPLE FABRIC / COLOUR',w:20,t:'static'},{ci:19,h:'3RD SAMPLE SENT DATE',w:15,t:'static'},
-  {ci:20,h:'3RD SAMPLE COMMENTS SENT DATE',w:20,t:'sys'},
-  {ci:21,h:'PP SAMPLE FABRIC / COLOUR',w:20,t:'static'},{ci:22,h:'PP SAMPLE SENT DATE',w:15,t:'static'},
-  {ci:23,h:'PP SAMPLE COMMENTS SENT DATE',w:20,t:'sys'},
-  {ci:24,h:'2ND PP SAMPLE FABRIC / COLOUR',w:20,t:'static'},{ci:25,h:'2ND PP SAMPLE SENT DATE',w:15,t:'static'},
-  {ci:26,h:'2ND PP SAMPLE COMMENTS SENT DATE',w:20,t:'sys'},
-  {ci:27,h:'SHOOT SAMPLE FABRIC / COLOUR',w:20,t:'static'},{ci:28,h:'SHOOT SAMPLE SENT DATE',w:15,t:'static'},
-  {ci:29,h:'SHOOT SAMPLE COMMENTS SENT DATE',w:20,t:'sys'},
-  {ci:30,h:'SHOOT SAMPLE STATUS',w:16,t:'sys'},{ci:31,h:'SAMPLE STAGE',w:14,t:'sys'},
-  {ci:32,h:'PO SENT DATE',w:13,t:'sys'},{ci:33,h:'BULK SPEC APPROVAL',w:15,t:'sys'},
-  {ci:34,h:'BULK FABRIC APPROVAL',w:15,t:'sys'},{ci:35,h:'FABRIC NOTES',w:24,t:'static'},
-  {ci:36,h:'QC DATE',w:13,t:'sys'},{ci:37,h:'SUPPLIER QC DATE',w:16,t:'static'},
-  {ci:38,h:'APPROVED HANDOVER DATE',w:17,t:'sys'},{ci:39,h:'STATUS',w:24,t:'static'},
+  {ci:7,h:'COST ($)',w:10,t:'sys'},{ci:8,h:'TIERED PRICING',w:14,t:'static'},{ci:9,h:'COST APPROVED?',w:13,t:'sys'},
+  {ci:10,h:'PO NUMBER (CP)',w:15,t:'sys'},{ci:11,h:'AIRTABLE POs & STATUS',w:34,t:'sys'},{ci:12,h:'TP SEND DATE',w:13,t:'sys'},
+  {ci:13,h:'1ST SAMPLE FABRIC / COLOUR',w:20,t:'static'},{ci:14,h:'1ST SAMPLE SENT DATE',w:15,t:'static'},
+  {ci:15,h:'1ST SAMPLE COMMENTS SENT DATE',w:20,t:'sys'},
+  {ci:16,h:'2ND SAMPLE FABRIC / COLOUR',w:20,t:'static'},{ci:17,h:'2ND SAMPLE SENT DATE',w:15,t:'static'},
+  {ci:18,h:'2ND SAMPLE COMMENTS SENT DATE',w:20,t:'sys'},
+  {ci:19,h:'3RD SAMPLE FABRIC / COLOUR',w:20,t:'static'},{ci:20,h:'3RD SAMPLE SENT DATE',w:15,t:'static'},
+  {ci:21,h:'3RD SAMPLE COMMENTS SENT DATE',w:20,t:'sys'},
+  {ci:22,h:'PP SAMPLE FABRIC / COLOUR',w:20,t:'static'},{ci:23,h:'PP SAMPLE SENT DATE',w:15,t:'static'},
+  {ci:24,h:'PP SAMPLE COMMENTS SENT DATE',w:20,t:'sys'},
+  {ci:25,h:'2ND PP SAMPLE FABRIC / COLOUR',w:20,t:'static'},{ci:26,h:'2ND PP SAMPLE SENT DATE',w:15,t:'static'},
+  {ci:27,h:'2ND PP SAMPLE COMMENTS SENT DATE',w:20,t:'sys'},
+  {ci:28,h:'SHOOT SAMPLE FABRIC / COLOUR',w:20,t:'static'},{ci:29,h:'SHOOT SAMPLE SENT DATE',w:15,t:'static'},
+  {ci:30,h:'SHOOT SAMPLE COMMENTS SENT DATE',w:20,t:'sys'},
+  {ci:31,h:'SHOOT SAMPLE STATUS',w:16,t:'sys'},{ci:32,h:'SAMPLE STAGE',w:14,t:'sys'},
+  {ci:33,h:'PO SENT DATE',w:13,t:'sys'},{ci:34,h:'BULK SPEC APPROVAL',w:15,t:'sys'},
+  {ci:35,h:'BULK FABRIC APPROVAL',w:15,t:'sys'},{ci:36,h:'FABRIC NOTES',w:24,t:'static'},
+  {ci:37,h:'QC DATE',w:13,t:'sys'},{ci:38,h:'SUPPLIER QC DATE',w:16,t:'static'},
+  {ci:39,h:'APPROVED HANDOVER DATE',w:17,t:'sys'},{ci:40,h:'PRODUCT TIER',w:14,t:'sys'},{ci:41,h:'STATUS',w:24,t:'static'},
 ];
 const N_FIXED=FIXED_COLS.length;
+const CI=Object.fromEntries(FIXED_COLS.map(f=>[f.h,f.ci]));   // header -> column index (robust to layout changes)
 
 // ═══ INDEXED DB ═══
 const IDB_NAME='mdv-wip-cache',IDB_STORE='uplus',IDB_VER=1;
@@ -148,12 +149,12 @@ function normSupplier(n){if(!n)return'';let s=String(n).replace(/\u00a0/g,' ').t
 function getAtVal(cell){if(cell==null)return'';if(typeof cell==='string'||typeof cell==='number')return String(cell);if(typeof cell==='object'){if(Array.isArray(cell))return cell.map(i=>(typeof i==='object'?(i.name||''):String(i))).join(', ');return cell.name||'';}return'';}
 async function fetchAtPage(filter,offset){const fq=AT_FIELDS.map(f=>`fields%5B%5D=${f}`).join('&');const url=`https://api.airtable.com/v0/${AT_BASE}/${AT_TABLE}?pageSize=100&returnFieldsByFieldId=true&cellFormat=string&timeZone=Europe%2FLondon&userLocale=en-gb&${fq}&filterByFormula=${encodeURIComponent(filter)}${offset?'&offset='+encodeURIComponent(offset):''}`;for(let a=0;a<4;a++){const r=await fetch(url,{headers:{'Authorization':`Bearer ${S.apiKey}`}});if(r.status===429&&a<3){await new Promise(x=>setTimeout(x,1500*(a+1)));continue;}if(!r.ok)throw new Error(`AT ${r.status}: ${await r.text()}`);return r.json();}}
 async function fetchAtPrefix(prefix,onPage){const recs=[];let offset=null;while(true){const d=await fetchAtPage(`LEFT({SKU as Text},${prefix.length})="${prefix}"`,offset);recs.push(...(d.records||[]));onPage(recs.length);offset=d.offset||null;if(!offset)break;}return recs;}
-async function fetchAtData(onProgress){const skuPoMap={},skuLines={},delPoLines={},atPoSeen=new Set();const GENDER_FILTER='OR(ARRAYJOIN({Gender})="Men\'s",ARRAYJOIN({Gender})="Unisex")';const allRecs=[];let _off=null;do{const d=await fetchAtPage(GENDER_FILTER,_off);allRecs.push(...(d.records||[]));onProgress(allRecs.length);_off=d.offset||null;}while(_off);for(const r of allRecs){const c=r.fields||{};const sku=String(getAtVal(c['fldlgN88d6xMdmgGE'])||'').trim();if(!sku)continue;const ps=String(getAtVal(c['fldpplV5P1srxOKiR'])||'').trim().toUpperCase();const ls=String(getAtVal(c['fldRkRlWGV612tmnd'])||'').trim().toUpperCase();const skuBase=sku.split('-').slice(0,2).join('-');const po=String(getAtVal(c['fld6f8fPC1WepKyEX'])||'').trim();if(!po)continue;atPoSeen.add(`${skuBase}||${po}`);if(SKIP_PO.has(ps)||SKIP_LINE.has(ls)){const k=`${skuBase}||${po}`;if(!delPoLines[k])delPoLines[k]={total:0,delivered:0};delPoLines[k].total++;delPoLines[k].delivered++;continue;}const sr=String(getAtVal(c['fldPmxdxfFGo2gLzz'])||'').trim();const hasShip=!!(sr&&sr!=='nan');if(!skuLines[skuBase])skuLines[skuBase]={total:0,shipped:0};skuLines[skuBase].total++;if(hasShip){skuLines[skuBase].shipped++;continue;}if(!skuPoMap[skuBase])skuPoMap[skuBase]={};if(!skuPoMap[skuBase][po]){skuPoMap[skuBase][po]={line_status:'',po_status:'',po_sent_date:'',bulk_spec_approval:'',bulk_fabric_approval:'',qc_date:'',approved_handover_date:'',supplier:'',release:'',product_title:'',colour:'',cost:''};}const d=skuPoMap[skuBase][po];if(ls&&!d.line_status)d.line_status=ls;if(ps&&!d.po_status)d.po_status=ps;const fm={'fldMnCMSWz1XO8nCo':'supplier','fldGKnrTB0ls25pge':'release','fldFDHkhZGUowIRhq':'po_sent_date','fldZCgFjUzcRB6QV7':'bulk_spec_approval','fld7bZKCwQKvLYKk9':'bulk_fabric_approval','fldV2NaeBOuZfeOBj':'qc_date','fldLTJu4MYP5IXxK3':'approved_handover_date','fldutZNE72EdAT2mU':'product_title','fldHXxrmrOmo4jLDV':'colour','fldWaLqQk9z6AT8lX':'cost'};for(const[fid,fn]of Object.entries(fm)){const v=String(getAtVal(c[fid])||'').trim();if(v&&v!=='nan'&&!d[fn])d[fn]=fn==='supplier'?normSupplier(v):v;}}const allShipped=new Set(Object.entries(skuLines).filter(([,c])=>c.total>0&&c.total===c.shipped).map(([s])=>s));const deliveredPos=new Set(Object.entries(delPoLines).filter(([,c])=>c.total>0&&c.total===c.delivered).map(([k])=>k));return{skuPoMap,allShipped,deliveredPos,atPoSeen,total:allRecs.length};}
+async function fetchAtData(onProgress){const skuPoMap={},skuLines={},delPoLines={},atPoSeen=new Set();const GENDER_FILTER='OR(ARRAYJOIN({Gender})="Women\'s",ARRAYJOIN({Gender})="Unisex")';const allRecs=[];let _off=null;do{const d=await fetchAtPage(GENDER_FILTER,_off);allRecs.push(...(d.records||[]));onProgress(allRecs.length);_off=d.offset||null;}while(_off);for(const r of allRecs){const c=r.fields||{};const sku=String(getAtVal(c['fldlgN88d6xMdmgGE'])||'').trim();if(!sku)continue;const ps=String(getAtVal(c['fldpplV5P1srxOKiR'])||'').trim().toUpperCase();const ls=String(getAtVal(c['fldRkRlWGV612tmnd'])||'').trim().toUpperCase();const skuBase=sku.split('-').slice(0,2).join('-');const po=String(getAtVal(c['fld6f8fPC1WepKyEX'])||'').trim();if(!po)continue;atPoSeen.add(`${skuBase}||${po}`);if(SKIP_PO.has(ps)||SKIP_LINE.has(ls)){const k=`${skuBase}||${po}`;if(!delPoLines[k])delPoLines[k]={total:0,delivered:0};delPoLines[k].total++;delPoLines[k].delivered++;continue;}const sr=String(getAtVal(c['fldPmxdxfFGo2gLzz'])||'').trim();const hasShip=!!(sr&&sr!=='nan');if(!skuLines[skuBase])skuLines[skuBase]={total:0,shipped:0};skuLines[skuBase].total++;if(hasShip){skuLines[skuBase].shipped++;continue;}if(!skuPoMap[skuBase])skuPoMap[skuBase]={};if(!skuPoMap[skuBase][po]){skuPoMap[skuBase][po]={line_status:'',po_status:'',po_sent_date:'',bulk_spec_approval:'',bulk_fabric_approval:'',qc_date:'',approved_handover_date:'',supplier:'',release:'',product_title:'',colour:'',cost:''};}const d=skuPoMap[skuBase][po];if(ls&&!d.line_status)d.line_status=ls;if(ps&&!d.po_status)d.po_status=ps;const fm={'fldMnCMSWz1XO8nCo':'supplier','fldGKnrTB0ls25pge':'release','fldFDHkhZGUowIRhq':'po_sent_date','fldZCgFjUzcRB6QV7':'bulk_spec_approval','fld7bZKCwQKvLYKk9':'bulk_fabric_approval','fldV2NaeBOuZfeOBj':'qc_date','fldLTJu4MYP5IXxK3':'approved_handover_date','fldutZNE72EdAT2mU':'product_title','fldHXxrmrOmo4jLDV':'colour','fldWaLqQk9z6AT8lX':'cost'};for(const[fid,fn]of Object.entries(fm)){const v=String(getAtVal(c[fid])||'').trim();if(v&&v!=='nan'&&!d[fn])d[fn]=fn==='supplier'?normSupplier(v):v;}}const allShipped=new Set(Object.entries(skuLines).filter(([,c])=>c.total>0&&c.total===c.shipped).map(([s])=>s));const deliveredPos=new Set(Object.entries(delPoLines).filter(([,c])=>c.total>0&&c.total===c.delivered).map(([k])=>k));return{skuPoMap,allShipped,deliveredPos,atPoSeen,total:allRecs.length};}
 
 // ═══ CP PARSER ═══
 function readCellText(cell){if(!cell)return'';const v=cell.value;if(v==null||v==='')return'';if(typeof v==='string')return v.trim();if(typeof v==='number'||typeof v==='boolean')return String(v);if(v instanceof Date)return v.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'});if(typeof v==='object'){if(v.result!==undefined&&v.result!==null)return readCellText({value:v.result});if(v.richText)return v.richText.map(r=>r.text||'').join('').trim();if(v.text)return String(v.text).trim();}return'';}
 function fmtDateStr(v){if(!v||v==='nan')return'';if(v instanceof Date)return v.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'});const s=String(v).trim();if(!s||s==='nan')return'';const m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);if(m)return`${m[3]}/${m[2]}/${m[1]}`;if(/^\d{2}\/\d{2}\/\d{4}$/.test(s))return s;return s.slice(0,10);}
-async function parseCriticalPath(file){const ab=await file.arrayBuffer();const wb=new ExcelJS.Workbook();await wb.xlsx.load(ab);const styles=[];for(const ws of wb.worksheets){if(CP_SKIP.has(ws.name))continue;const release=ws.name.replace(/\s*\(.*$/,'').trim();let hdrRow=-1;const ci={};ws.eachRow((row,ri)=>{if(hdrRow>0)return;row.eachCell((cell,c)=>{const v=String(cell.value||'').trim().toUpperCase();if(!v)return;if(v==='SAMPLE NUMBER'&&!ci.sn){ci.sn=c;hdrRow=ri;}if(v==='SUPPLIER'&&!ci.sup)ci.sup=c;if(v==='SKU'&&!ci.sku)ci.sku=c;if(v==='PRODUCT NAME'&&!ci.name)ci.name=c;if(v==='COLOUR NAME'||v==='COLOR NAME')ci.colour=c;else if(!ci.colour&&(v==='COLOUR'||v==='COLOR'))ci.colour=c;if(v.includes('MBF')&&v.includes('FABRIC')&&v.includes('CODE'))ci.mbf=c;if(v==='SAMPLE STAGE')ci.stage=c;if(v==='SHOOT SAMPLE STATUS')ci.shoot=c;else if(!ci.shoot&&v.includes('SHOOT SAMPLE'))ci.shoot=c;if(v==='TP SEND OUT DATE')ci.tp=c;else if(!ci.tp&&v.includes('TP SEND'))ci.tp=c;if(v==='$ CP')ci.cost=c;if(v==='PO NUMBER')ci.po=c;else if(!ci.po&&v.includes('PO NUMBER'))ci.po=c;if(v==='1ST SAMPLE COMMENTS SENT DATE')ci.csd1=c;if(v==='2ND SAMPLE COMMENTS SENT DATE')ci.csd2=c;if(v==='3RD SAMPLE COMMENTS SENT DATE')ci.csd3=c;if(v==='PP SAMPLE COMMENTS SENT DATE')ci.csdpp=c;});});if(hdrRow<0||!ci.sn)continue;console.log('[CP] Tab:',ws.name,'headerRow:',hdrRow,'cols found:',JSON.stringify(ci));ws.eachRow((row,ri)=>{if(ri<=hdrRow)return;const sn=String(row.getCell(ci.sn).value||'').trim();if(!sn||sn==='nan'||sn.length<3)return;const sup=normSupplier(ci.sup?readCellText(row.getCell(ci.sup)):readCellText(row.getCell(Math.max(1,ci.sn-1))));if(!sup||['nan','DO NOT USE THIS ROW','TBD'].includes(sup))return;const sku=ci.sku?String(row.getCell(ci.sku).value||'').trim()||sn:sn;if(!sku||sku==='nan')return;const tpCell=ci.tp?row.getCell(ci.tp):null;let tp='';if(tpCell){const tv=tpCell.value;if(tv instanceof Date)tp=tv.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'});else{const raw=readCellText(tpCell);tp=fmtDateStr(raw)||raw;}}let poRaw=ci.po?readCellText(row.getCell(ci.po)):'';poRaw=poRaw.replace('nan','').trim();let po=poRaw;if(po&&/^\d+(\.\d+)?$/.test(po))po=`PO-${parseInt(po,10)}`;let cost='',costApproved='';if(ci.cost){const cc=row.getCell(ci.cost);const cv=readCellText(cc);if(cv&&cv!=='nan'){const n=parseFloat(cv);cost=isNaN(n)?cv:`$${n.toFixed(2)}`;}let fa='';if(cc.font&&cc.font.color)fa=(cc.font.color.argb||cc.font.color.rgb||'').toUpperCase();if(fa.endsWith('6AA84F')||fa.endsWith('38761D')||fa.endsWith('93C47D'))costApproved='YES';else if(fa.endsWith('FF0000')||fa.endsWith('0000FF')||fa.endsWith('CC0000'))costApproved='NO';}const csd=c=>c?fmtDateStr(readCellText(row.getCell(c))):'';styles.push({sku,skuBase:sku.split('-').slice(0,2).join('-'),supplier:sup,po,release,tab:ws.name,name:ci.name?readCellText(row.getCell(ci.name)):'',colour:ci.colour?readCellText(row.getCell(ci.colour)):'',mbf:ci.mbf?readCellText(row.getCell(ci.mbf)):'',stage:ci.stage?readCellText(row.getCell(ci.stage)):'',shoot:ci.shoot?readCellText(row.getCell(ci.shoot)):'',tp,cost,costApproved,csd1:csd(ci.csd1),csd2:csd(ci.csd2),csd3:csd(ci.csd3),csdpp:csd(ci.csdpp)});});}return styles;}
+async function parseCriticalPath(file){const ab=await file.arrayBuffer();const wb=new ExcelJS.Workbook();await wb.xlsx.load(ab);const styles=[];for(const ws of wb.worksheets){if(CP_SKIP.has(ws.name))continue;const release=ws.name.replace(/\s*\(.*$/,'').trim();let hdrRow=-1;const ci={};ws.eachRow((row,ri)=>{if(hdrRow>0)return;row.eachCell((cell,c)=>{const v=String(cell.value||'').trim().toUpperCase();if(!v)return;if(v==='SAMPLE NUMBER'&&!ci.sn){ci.sn=c;hdrRow=ri;}if(v==='SUPPLIER'&&!ci.sup)ci.sup=c;if(v==='SKU'&&!ci.sku)ci.sku=c;if(v==='PRODUCT NAME'&&!ci.name)ci.name=c;if(v==='COLOUR NAME'||v==='COLOR NAME')ci.colour=c;else if(!ci.colour&&(v==='COLOUR'||v==='COLOR'))ci.colour=c;if(v.includes('MBF')&&v.includes('FABRIC')&&v.includes('CODE'))ci.mbf=c;if(v==='SAMPLE STAGE')ci.stage=c;if(v==='SHOOT SAMPLE STATUS')ci.shoot=c;else if(!ci.shoot&&v.includes('SHOOT SAMPLE'))ci.shoot=c;if(v==='TP SEND OUT DATE')ci.tp=c;else if(!ci.tp&&v.includes('TP SEND'))ci.tp=c;if(v==='$ CP')ci.cost=c;if(v==='PO NUMBER')ci.po=c;else if(!ci.po&&v.includes('PO NUMBER'))ci.po=c;if(v==='1ST SAMPLE COMMENTS SENT DATE')ci.csd1=c;if(v==='2ND SAMPLE COMMENTS SENT DATE')ci.csd2=c;if(v==='3RD SAMPLE COMMENTS SENT DATE')ci.csd3=c;if(v==='PP SAMPLE COMMENTS SENT DATE')ci.csdpp=c;if(v==='PRODUCT TIER')ci.tier=c;else if(!ci.tier&&v.includes('PRODUCT TIER'))ci.tier=c;});});if(hdrRow<0||!ci.sn)continue;console.log('[CP] Tab:',ws.name,'headerRow:',hdrRow,'cols found:',JSON.stringify(ci));ws.eachRow((row,ri)=>{if(ri<=hdrRow)return;const sn=String(row.getCell(ci.sn).value||'').trim();if(!sn||sn==='nan'||sn.length<3)return;const sup=normSupplier(ci.sup?readCellText(row.getCell(ci.sup)):readCellText(row.getCell(Math.max(1,ci.sn-1))));if(!sup||['nan','DO NOT USE THIS ROW','TBD'].includes(sup))return;const sku=ci.sku?String(row.getCell(ci.sku).value||'').trim()||sn:sn;if(!sku||sku==='nan')return;const tpCell=ci.tp?row.getCell(ci.tp):null;let tp='';if(tpCell){const tv=tpCell.value;if(tv instanceof Date)tp=tv.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'});else{const raw=readCellText(tpCell);tp=fmtDateStr(raw)||raw;}}let poRaw=ci.po?readCellText(row.getCell(ci.po)):'';poRaw=poRaw.replace('nan','').trim();let po=poRaw;if(po&&/^\d+(\.\d+)?$/.test(po))po=`PO-${parseInt(po,10)}`;let cost='',costApproved='';if(ci.cost){const cc=row.getCell(ci.cost);const cv=readCellText(cc);if(cv&&cv!=='nan'){const n=parseFloat(cv);cost=isNaN(n)?cv:`$${n.toFixed(2)}`;}let fa='';if(cc.font&&cc.font.color)fa=(cc.font.color.argb||cc.font.color.rgb||'').toUpperCase();if(fa.endsWith('6AA84F')||fa.endsWith('38761D')||fa.endsWith('93C47D'))costApproved='YES';else if(fa.endsWith('FF0000')||fa.endsWith('0000FF')||fa.endsWith('CC0000'))costApproved='NO';}const csd=c=>c?fmtDateStr(readCellText(row.getCell(c))):'';styles.push({sku,skuBase:sku.split('-').slice(0,2).join('-'),supplier:sup,po,release,tab:ws.name,name:ci.name?readCellText(row.getCell(ci.name)):'',colour:ci.colour?readCellText(row.getCell(ci.colour)):'',mbf:ci.mbf?readCellText(row.getCell(ci.mbf)):'',stage:ci.stage?readCellText(row.getCell(ci.stage)):'',shoot:ci.shoot?readCellText(row.getCell(ci.shoot)):'',tp,cost,costApproved,csd1:csd(ci.csd1),csd2:csd(ci.csd2),csd3:csd(ci.csd3),csdpp:csd(ci.csdpp),tier:ci.tier?readCellText(row.getCell(ci.tier)):''});});}return styles;}
 
 // ═══ READ PREV WIPs ═══
 // Turn a JS Date-string (e.g. "Wed Apr 15 2026 01:00:00 GMT+0100") — which is what
@@ -188,13 +189,13 @@ async function readPrevWip(file){
     const headers=[];
     for(let c=cmtStart;c<=maxCol;c++)headers.push(String(hdrRow.getCell(c).value||'').trim());
     console.log('[WIP] Comment headers:',headers.slice(0,5),'...');
-    const skuC=colByHdr['SKU']||3;
-    const atC=colByHdr['AIRTABLE POs & STATUS']||10;
-    const cpPoC=colByHdr['PO NUMBER (CP)']||9;
-    const colourC=colByHdr['COLOUR']||5;
+    const skuC=colByHdr['SKU']||CI['SKU'];
+    const atC=colByHdr['AIRTABLE POs & STATUS']||CI['AIRTABLE POs & STATUS'];
+    const cpPoC=colByHdr['PO NUMBER (CP)']||CI['PO NUMBER (CP)'];
+    const colourC=colByHdr['COLOUR']||CI['COLOUR'];
     console.log('[WIP] Key cols: SKU=',skuC,'AT=',atC,'CPPO=',cpPoC,'COLOUR=',colourC);
     const data={};const staticData={};const meta={};let rowCount=0;const occ={};
-    const nameC=colByHdr['PRODUCT NAME']||4,relC=colByHdr['RELEASE']||2;
+    const nameC=colByHdr['PRODUCT NAME']||CI['PRODUCT NAME'],relC=colByHdr['RELEASE']||CI['RELEASE'];
     ws.eachRow((row,ri)=>{
       if(ri<4)return;
       const sku=readCellText(row.getCell(skuC));
@@ -304,7 +305,7 @@ function buildAllWipRows(cpStyles,atData){
     if(cpPo&&!atEnts[cpPo]&&entries.length){parts.push(`⚠ CP PO ${cpPo} ≠ AT`);amber=true;}
     if(otherF.length){const f=[...new Set(otherF.map(([,i])=>factOf(i)))].join(' / ');parts.push(`⚠ AT factory ${f} ≠ CP (${sup})`);amber=true;}
     const info=nrAtInfo||{};
-    ensureSup(sup).nr.push({type:'NEW RELEASE',isRestock:false,sku:style.sku,skuBase,supplier:sup,po:cpPo,atPo:nrAtPo||'',name:style.name||'',colour:style.colour||'',mbf:style.mbf,stage:style.stage,shoot:style.shoot,tp:style.tp,cost:style.cost,costApproved:style.costApproved,csd1:style.csd1,csd2:style.csd2,csd3:style.csd3,csdpp:style.csdpp,release:style.release,tab:style.tab,atStatus:parts.join('  '),atStatusType:amber?'amber':'normal',poSent:info.po_sent_date||'',bulkSpec:info.bulk_spec_approval||'',bulkFab:info.bulk_fabric_approval||'',qcDate:info.qc_date||'',handover:info.approved_handover_date||''});
+    ensureSup(sup).nr.push({type:'NEW RELEASE',isRestock:false,sku:style.sku,skuBase,supplier:sup,po:cpPo,atPo:nrAtPo||'',name:style.name||'',colour:style.colour||'',mbf:style.mbf,stage:style.stage,shoot:style.shoot,tp:style.tp,cost:style.cost,costApproved:style.costApproved,csd1:style.csd1,csd2:style.csd2,csd3:style.csd3,csdpp:style.csdpp,tier:style.tier||'',release:style.release,tab:style.tab,atStatus:parts.join('  '),atStatusType:amber?'amber':'normal',poSent:info.po_sent_date||'',bulkSpec:info.bulk_spec_approval||'',bulkFab:info.bulk_fabric_approval||'',qcDate:info.qc_date||'',handover:info.approved_handover_date||''});
   }
   // PASS 2: every live Airtable PO not already claimed by a New Release line -> a restock under
   // its own Airtable factory. Because claiming happens across ALL CP lines first, a PO that one
@@ -330,10 +331,10 @@ const DARK='FF1A1A2E',WHITE='FFFFFFFF',GREEN_F='FFC6EFCE',GREEN_T='FF276221',RED
 //   teal   = FABRIC NOTES + SUPPLIER QC DATE headers (data cells follow the row base)
 //   navy   = everything else (system columns)
 const COL_BLUE='FFDDEBF7',COL_PEACH='FFFCE4D6',COL_GREEN='FFE2EFDA';
-const _BLUE_COLS=new Set([12,13,15,16,18,19,21,22,24,25]);
-const _PEACH_COLS=new Set([27,28,30]);
-function colTint(ci){if(_BLUE_COLS.has(ci))return COL_BLUE;if(_PEACH_COLS.has(ci))return COL_PEACH;if(ci===39)return COL_GREEN;return null;}
-function hdrStyle(ci){if(_BLUE_COLS.has(ci))return{f:COL_BLUE,t:'FF000000'};if(_PEACH_COLS.has(ci))return{f:COL_PEACH,t:'FF000000'};if(ci===35||ci===37)return{f:STATIC_HDR,t:WHITE};if(ci===39)return{f:COL_GREEN,t:'FF000000'};return{f:DARK,t:WHITE};}
+const _BLUE_COLS=new Set(['1ST SAMPLE FABRIC / COLOUR','1ST SAMPLE SENT DATE','2ND SAMPLE FABRIC / COLOUR','2ND SAMPLE SENT DATE','3RD SAMPLE FABRIC / COLOUR','3RD SAMPLE SENT DATE','PP SAMPLE FABRIC / COLOUR','PP SAMPLE SENT DATE','2ND PP SAMPLE FABRIC / COLOUR','2ND PP SAMPLE SENT DATE'].map(h=>CI[h]));
+const _PEACH_COLS=new Set(['SHOOT SAMPLE FABRIC / COLOUR','SHOOT SAMPLE SENT DATE','SHOOT SAMPLE STATUS'].map(h=>CI[h]));
+function colTint(ci){if(_BLUE_COLS.has(ci))return COL_BLUE;if(_PEACH_COLS.has(ci))return COL_PEACH;if(ci===CI['STATUS'])return COL_GREEN;return null;}
+function hdrStyle(ci){if(_BLUE_COLS.has(ci))return{f:COL_BLUE,t:'FF000000'};if(_PEACH_COLS.has(ci))return{f:COL_PEACH,t:'FF000000'};if(ci===CI['FABRIC NOTES']||ci===CI['SUPPLIER QC DATE'])return{f:STATIC_HDR,t:WHITE};if(ci===CI['STATUS'])return{f:COL_GREEN,t:'FF000000'};return{f:DARK,t:WHITE};}
 function af(a){return{type:'pattern',pattern:'solid',fgColor:{argb:a}};}
 function tb(){const s={style:'thin',color:{argb:'FFCCCCCC'}};return{top:s,bottom:s,left:s,right:s};}
 function tkb(){const s={style:'medium',color:{argb:'FF888888'}};return{top:s,bottom:s,left:s,right:s};}
@@ -373,7 +374,7 @@ async function writeSupplierWip(supplierName,nrRows,rsRows,removedRows,uPlus,sta
       const rf=af(REMOVED_F);const rfont={bold:true,color:{argb:'FFCC0000'},size:9,name:'Arial'};
       for(const fc of FIXED_COLS){const cell=wsr.getCell(fc.ci);cell.fill=rf;cell.border=tb();cell.font=rfont;cell.alignment={horizontal:'left',vertical:'top',wrapText:true};}
       wsr.getCell(1).value='REVIEW: '+(row.removeReason||'AUTO-REMOVED');wsr.getCell(1).alignment={horizontal:'center',vertical:'middle',wrapText:true};
-      wsr.getCell(2).value=row.release||'';wsr.getCell(3).value=sku;wsr.getCell(4).value=row.name||'';wsr.getCell(5).value=row.colour||'';wsr.getCell(9).value=row.po||'';wsr.getCell(10).value=row.atStatus||'';wsr.getCell(32).value=row.poSent||'';wsr.getCell(33).value=row.bulkSpec||'';wsr.getCell(34).value=row.bulkFab||'';wsr.getCell(36).value=row.qcDate||'';wsr.getCell(38).value=row.handover||'';
+      wsr.getCell(CI['RELEASE']).value=row.release||'';wsr.getCell(CI['SKU']).value=sku;wsr.getCell(CI['PRODUCT NAME']).value=row.name||'';wsr.getCell(CI['COLOUR']).value=row.colour||'';wsr.getCell(CI['PO NUMBER (CP)']).value=row.po||'';wsr.getCell(CI['AIRTABLE POs & STATUS']).value=row.atStatus||'';wsr.getCell(CI['PO SENT DATE']).value=row.poSent||'';wsr.getCell(CI['BULK SPEC APPROVAL']).value=row.bulkSpec||'';wsr.getCell(CI['BULK FABRIC APPROVAL']).value=row.bulkFab||'';wsr.getCell(CI['QC DATE']).value=row.qcDate||'';wsr.getCell(CI['APPROVED HANDOVER DATE']).value=row.handover||'';
       for(const fc of FIXED_COLS){if(fc.t==='static'&&prevStatic[fc.h]){wsr.getCell(fc.ci).value=prevStatic[fc.h];wsr.getCell(fc.ci).fill=rf;}}
       const uCells=_uCells;
       for(let j=0;j<nU;j++){const ci=N_FIXED+1+j;const uc=uCells[j];const cell=wsr.getCell(ci);if(uc){cell.value=uc.value;if(uc.fillArgb&&uc.fillArgb.length>=6)cell.fill=af(uc.fillArgb.length===6?'FF'+uc.fillArgb:uc.fillArgb);const fa=uc.fontArgb&&uc.fontArgb.length>=6?(uc.fontArgb.length===6?'FF'+uc.fontArgb:uc.fontArgb):'FF111111';cell.font={color:{argb:fa},bold:uc.bold||false,size:9,name:'Arial'};}cell.alignment={horizontal:'left',vertical:'top',wrapText:true};cell.border=tb();}
@@ -381,19 +382,21 @@ async function writeSupplierWip(supplierName,nrRows,rsRows,removedRows,uPlus,sta
     }
     if(sku!==lastSku){parity=1-parity;lastSku=sku;}baseFill=row.isRestock?af(PURPLE_F):af(parity?STRIPPED:'FFFFFFFF');
     const isRS=row.isRestock;
-    wc(1,isRS?'RESTOCK':'NEW RELEASE',isRS?af(PURPLE_F):baseFill,{bold:true,color:{argb:isRS?PURPLE_T:'FF1E40AF'},size:9,name:'Arial'},{horizontal:'center',vertical:'middle',wrapText:true});
-    wc(2,row.release,null,null,{horizontal:'left',vertical:'middle',wrapText:true});wc(3,sku);wc(4,row.name);wc(5,row.colour,null,null,{horizontal:'left',vertical:'middle',wrapText:true});wc(6,isRS?null:row.mbf,null,null,{horizontal:'left',vertical:'middle',wrapText:true});wc(7,row.cost,null,null,{horizontal:'left',vertical:'middle',wrapText:true});
-    if(row.costApproved==='YES')wc(8,'YES',af(GREEN_F),{bold:true,color:{argb:GREEN_T},size:9,name:'Arial'},{horizontal:'center',vertical:'middle',wrapText:true});
-    else if(row.costApproved==='NO')wc(8,'NO',af('FFFCE4EC'),{bold:true,color:{argb:RED_T},size:9,name:'Arial'},{horizontal:'center',vertical:'middle',wrapText:true});
-    else wc(8,null,null,null,{horizontal:'center',vertical:'middle'});
-    wc(9,isRS?null:(row.po||null),null,null,{horizontal:'left',vertical:'middle',wrapText:true});
-    const atAmber=row.atStatusType==='amber';wc(10,row.atStatus||null,atAmber?af(AMBER_F):baseFill,atAmber?{color:{argb:AMBER_T},size:9,name:'Arial'}:null,{horizontal:'left',vertical:'top',wrapText:true});
-    wc(11,isRS?null:(row.tp||null),null,null,{horizontal:'left',vertical:'middle',wrapText:true});
-    const csdMap={14:row.csd1||null,17:row.csd2||null,20:row.csd3||null,23:row.csdpp||null,26:null,29:null};
-    for(const fc of FIXED_COLS){const ci=fc.ci;if(ci<12||ci>29)continue;if(fc.t==='static')wStatic(ci,fc.h);else wc(ci,csdMap[ci]||null,null,null,{horizontal:'left',vertical:'middle',wrapText:true});}
-    wc(30,isRS?null:(row.shoot||null),null,null,{horizontal:'left',vertical:'middle',wrapText:true});
-    wc(31,isRS?null:(row.stage||null),null,null,{horizontal:'left',vertical:'middle',wrapText:true});
-    wc(32,row.poSent||null,null,null,{horizontal:'left',vertical:'middle',wrapText:true});wc(33,row.bulkSpec||null,null,null,{horizontal:'left',vertical:'middle',wrapText:true});wc(34,row.bulkFab||null,null,null,{horizontal:'left',vertical:'middle',wrapText:true});wStatic(35,'FABRIC NOTES');wc(36,row.qcDate||null,null,null,{horizontal:'left',vertical:'middle',wrapText:true});wStatic(37,'SUPPLIER QC DATE');wc(38,row.handover||null,null,null,{horizontal:'left',vertical:'middle',wrapText:true});wStatic(39,'STATUS');
+    wc(CI['TYPE'],isRS?'RESTOCK':'NEW RELEASE',isRS?af(PURPLE_F):baseFill,{bold:true,color:{argb:isRS?PURPLE_T:'FF1E40AF'},size:9,name:'Arial'},{horizontal:'center',vertical:'middle',wrapText:true});
+    wc(CI['RELEASE'],row.release,null,null,{horizontal:'left',vertical:'middle',wrapText:true});wc(CI['SKU'],sku);wc(CI['PRODUCT NAME'],row.name);wc(CI['COLOUR'],row.colour,null,null,{horizontal:'left',vertical:'middle',wrapText:true});wc(CI['MBF FABRIC CODE'],isRS?null:row.mbf,null,null,{horizontal:'left',vertical:'middle',wrapText:true});wc(CI['COST ($)'],row.cost,null,null,{horizontal:'left',vertical:'middle',wrapText:true});
+    wStatic(CI['TIERED PRICING'],'TIERED PRICING');
+    if(row.costApproved==='YES')wc(CI['COST APPROVED?'],'YES',af(GREEN_F),{bold:true,color:{argb:GREEN_T},size:9,name:'Arial'},{horizontal:'center',vertical:'middle',wrapText:true});
+    else if(row.costApproved==='NO')wc(CI['COST APPROVED?'],'NO',af('FFFCE4EC'),{bold:true,color:{argb:RED_T},size:9,name:'Arial'},{horizontal:'center',vertical:'middle',wrapText:true});
+    else wc(CI['COST APPROVED?'],null,null,null,{horizontal:'center',vertical:'middle'});
+    wc(CI['PO NUMBER (CP)'],isRS?null:(row.po||null),null,null,{horizontal:'left',vertical:'middle',wrapText:true});
+    const atAmber=row.atStatusType==='amber';wc(CI['AIRTABLE POs & STATUS'],row.atStatus||null,atAmber?af(AMBER_F):baseFill,atAmber?{color:{argb:AMBER_T},size:9,name:'Arial'}:null,{horizontal:'left',vertical:'top',wrapText:true});
+    wc(CI['TP SEND DATE'],isRS?null:(row.tp||null),null,null,{horizontal:'left',vertical:'middle',wrapText:true});
+    const _sampLo=CI['1ST SAMPLE FABRIC / COLOUR'],_sampHi=CI['SHOOT SAMPLE COMMENTS SENT DATE'];
+    const csdMap={};csdMap[CI['1ST SAMPLE COMMENTS SENT DATE']]=row.csd1||null;csdMap[CI['2ND SAMPLE COMMENTS SENT DATE']]=row.csd2||null;csdMap[CI['3RD SAMPLE COMMENTS SENT DATE']]=row.csd3||null;csdMap[CI['PP SAMPLE COMMENTS SENT DATE']]=row.csdpp||null;
+    for(const fc of FIXED_COLS){const ci=fc.ci;if(ci<_sampLo||ci>_sampHi)continue;if(fc.t==='static')wStatic(ci,fc.h);else wc(ci,csdMap[ci]||null,null,null,{horizontal:'left',vertical:'middle',wrapText:true});}
+    wc(CI['SHOOT SAMPLE STATUS'],isRS?null:(row.shoot||null),null,null,{horizontal:'left',vertical:'middle',wrapText:true});
+    wc(CI['SAMPLE STAGE'],isRS?null:(row.stage||null),null,null,{horizontal:'left',vertical:'middle',wrapText:true});
+    wc(CI['PO SENT DATE'],row.poSent||null,null,null,{horizontal:'left',vertical:'middle',wrapText:true});wc(CI['BULK SPEC APPROVAL'],row.bulkSpec||null,null,null,{horizontal:'left',vertical:'middle',wrapText:true});wc(CI['BULK FABRIC APPROVAL'],row.bulkFab||null,null,null,{horizontal:'left',vertical:'middle',wrapText:true});wStatic(CI['FABRIC NOTES'],'FABRIC NOTES');wc(CI['QC DATE'],row.qcDate||null,null,null,{horizontal:'left',vertical:'middle',wrapText:true});wStatic(CI['SUPPLIER QC DATE'],'SUPPLIER QC DATE');wc(CI['APPROVED HANDOVER DATE'],row.handover||null,null,null,{horizontal:'left',vertical:'middle',wrapText:true});wc(CI['PRODUCT TIER'],isRS?null:(row.tier||null),null,null,{horizontal:'left',vertical:'middle',wrapText:true});wStatic(CI['STATUS'],'STATUS');
     const uCells=_uCells;
     for(let j=0;j<nU;j++){const ci=N_FIXED+1+j;const uc=uCells[j];const cell=wsr.getCell(ci);if(uc){cell.value=uc.value;if(uc.fillArgb&&uc.fillArgb.length>=6)cell.fill=af(uc.fillArgb.length===6?'FF'+uc.fillArgb:uc.fillArgb);const fa=uc.fontArgb&&uc.fontArgb.length>=6?(uc.fontArgb.length===6?'FF'+uc.fontArgb:uc.fontArgb):'FF111111';cell.font={color:{argb:fa},bold:uc.bold||false,size:9,name:'Arial'};}cell.alignment={horizontal:'left',vertical:'top',wrapText:true};cell.border=tb();}
   }
@@ -530,7 +533,7 @@ async function runBuild(){
     if(!cpMissing.length&&!atMissing.length)log('  All CP styles and AT POs accounted for','ok');
     else log(`  ${cpMissing.length} CP + ${atMissing.length} AT items not in any WIP`,'warn');
     setProgress(100);log(`Build complete — ${sups.length} files`,'ok');S.buildState='done';
-    const a=document.createElement('a');a.href=S.outputFiles['__ZIP__'];a.download=`MDV_Menswear_WIP_W${S.week}.zip`;a.click();
+    const a=document.createElement('a');a.href=S.outputFiles['__ZIP__'];a.download=`MDV_Womenswear_WIP_W${S.week}.zip`;a.click();
   }catch(e){log(`Error: ${e.message}`,'err');console.error(e);S.buildState='idle';}
   render();
 }
@@ -542,7 +545,7 @@ async function exportCache(){
     if(!all.length){toast('Nothing cached yet');return;}
     const blob=new Blob([JSON.stringify(all)],{type:'application/json'});
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-    a.download='MDV_Mens_WIP_Cache.json';a.click();
+    a.download='MDV_Womens_WIP_Cache.json';a.click();
     toast('Cache exported — share this file with your team');
   }catch(e){toast('Export failed: '+e.message);}
 }
@@ -563,7 +566,7 @@ async function importCache(){
 // ═══ RENDER ═══
 function render(){
   const canBuild=!!(S.cpStyles&&S.apiKey&&S.buildState==='idle');
-  let html=`<div class="header"><div><div class="h-title">MDV WIP Builder — Menswear</div><div class="h-sub">Week ${S.week} &middot; ${TODAY}</div></div><div style="color:rgba(255,255,255,.5);font-size:12px">${S.apiKey?'&#x1F7E2; Airtable connected':'&#x1F534; No API key'}</div></div>
+  let html=`<div class="header"><div><div class="h-title">MDV WIP Builder — Womenswear</div><div class="h-sub">Week ${S.week} &middot; ${TODAY}</div></div><div style="color:rgba(255,255,255,.5);font-size:12px">${S.apiKey?'&#x1F7E2; Airtable connected':'&#x1F534; No API key'}</div></div>
   <div class="nav">${['build','tracker','history','settings'].map(t=>`<button class="ntab${S.tab===t?' active':''}" onclick="S.tab='${t}';render()">${t.charAt(0).toUpperCase()+t.slice(1)}</button>`).join('')}</div>
   <div class="page">`;
 
@@ -571,7 +574,7 @@ function render(){
     // CP
     html+=`<div class="card"><div class="card-title">1 &middot; Critical Path</div>`;
     if(S.cpFileInfo){const ago=S.cpFileInfo.parsedAt?` &middot; parsed ${fmtRelative(S.cpFileInfo.parsedAt)}`:'';html+=`<div style="background:#F1F8E9;border:1px solid #A5D6A7;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:10px">&#10003; <strong>${esc(S.cpFileInfo.name)}</strong>${S.cpFileInfo.size?` &middot; ${fmtBytes(S.cpFileInfo.size)}`:''}${ago} &nbsp;<button class="btn" style="padding:4px 10px;font-size:11px;float:right" onclick="clearCpCache();S.cpStyles=null;S.cpFileInfo=null;render()">Clear</button></div>`;}
-    html+=`<div class="drop-zone${S.cpStyles?' has-files':''}" id="cp-drop"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="1.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><div style="margin-top:8px;font-size:13px;color:#555">${S.cpParsing?'Parsing...':S.cpStyles?`${S.cpStyles.length.toLocaleString()} styles loaded — drop a new file to update`:'Drop Menswear Critical Path xlsx here'}</div><div style="font-size:11px;color:#888;margin-top:4px">Click to browse &middot; Cached between sessions</div></div></div>`;
+    html+=`<div class="drop-zone${S.cpStyles?' has-files':''}" id="cp-drop"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="1.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><div style="margin-top:8px;font-size:13px;color:#555">${S.cpParsing?'Parsing...':S.cpStyles?`${S.cpStyles.length.toLocaleString()} styles loaded — drop a new file to update`:'Drop Womenswear Critical Path xlsx here'}</div><div style="font-size:11px;color:#888;margin-top:4px">Click to browse &middot; Cached between sessions</div></div></div>`;
     // Previous WIPs — FIX 2 clearer wording
     html+=`<div class="card"><div class="card-title">2 &middot; Previous WIPs <span style="font-size:11px;color:#888;font-weight:400">(optional)</span></div>`;
     const hasCached=Object.keys(S.cachedComments).length>0;
@@ -604,7 +607,7 @@ function render(){
   else if(S.tab==='history'){
     html+=`<div class="card-title">Previous weeks</div>`;
     if(!S.history.length)html+=`<div style="text-align:center;padding:40px;color:#888">No history yet.</div>`;
-    else html+=S.history.slice().reverse().map(h=>`<div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px;margin-bottom:10px"><div><div style="font-size:14px;font-weight:500">Week ${h.week} &middot; ${h.gl||'Menswear'}</div><div style="font-size:12px;color:#888;margin-top:3px">${h.date} &middot; ${h.rec}/${h.tot} received &middot; ${h.rep} replied</div></div>${chip(h.rec===h.tot?'Complete &#10003;':(h.tot-h.rec)+' outstanding',h.rec===h.tot?'#276221':'#8B4513',h.rec===h.tot?'#C6EFCE':'#FFF2CC')}</div>`).join('');
+    else html+=S.history.slice().reverse().map(h=>`<div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px;margin-bottom:10px"><div><div style="font-size:14px;font-weight:500">Week ${h.week} &middot; ${h.gl||'Womenswear'}</div><div style="font-size:12px;color:#888;margin-top:3px">${h.date} &middot; ${h.rec}/${h.tot} received &middot; ${h.rep} replied</div></div>${chip(h.rec===h.tot?'Complete &#10003;':(h.tot-h.rec)+' outstanding',h.rec===h.tot?'#276221':'#8B4513',h.rec===h.tot?'#C6EFCE':'#FFF2CC')}</div>`).join('');
   }
   else if(S.tab==='settings'){
     html+=`<div class="card"><div class="card-title">Airtable API Key</div><label style="font-size:11px;font-weight:500;color:#666;display:block;margin-bottom:6px">PERSONAL ACCESS TOKEN</label><input class="inp" type="password" placeholder="pat..." value="${esc(S.apiKey)}" oninput="S.apiKey=this.value;localStorage.setItem('mdv-api-key',this.value);render()"><div style="font-size:12px;color:#888;margin-top:6px">Stored locally in your browser only. Required scope: <code>data.records:read</code> on MDV Production &amp; Delivery.</div></div>
@@ -638,8 +641,8 @@ function toggleTk(sup,field){if(!S.tracker[sup])S.tracker[sup]={received:false,r
 function setNote(sup,val){if(!S.tracker[sup])S.tracker[sup]={received:false,replied:false,notes:''};S.tracker[sup].notes=val;saveTracker();}
 function archiveWeek(){const sups=getSuppliers();const rec=sups.filter(s=>S.tracker[s]?.received).length;const rep=sups.filter(s=>S.tracker[s]?.replied).length;S.history=S.history.filter(h=>!(h.week===S.week&&h.gl===GENDER_LABEL));S.history.push({week:S.week,gl:GENDER_LABEL,date:TODAY,rec,rep,tot:sups.length});saveHistory();toast('Week '+S.week+' archived');render();}
 async function clearCommentCache(){if(!confirm('Clear all cached comment data?'))return;const all=await idbList(`uplus-${GENDER}-`);for(const e of all)await idbDelete(e.key);S.cachedComments={};toast('Cache cleared');render();}
-function redownloadZip(){const url=S.outputFiles['__ZIP__'];if(!url){toast('No zip available');return;}const a=document.createElement('a');a.href=url;a.download=`MDV_Menswear_WIP_W${S.week}.zip`;a.click();}
-function downloadVerifCsv(){const vf=S.verification;if(!vf){toast('Run a build first');return;}const ec=s=>{const v=String(s??'');if(/[",\n]/.test(v))return'"'+v.replace(/"/g,'""')+'"';return v;};const lines=['Source,SKU,PO,Supplier,Tab,Reason'];for(const r of vf.cpMissing)lines.push(['CP',r.sku,r.po||'',r.supplier,r.tab,r.reason].map(ec).join(','));for(const r of vf.atMissing)lines.push(['AT',r.skuBase,r.po,r.supplier,r.line_status,r.po_status].map(ec).join(','));const blob=new Blob([lines.join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`MDV_Mens_Verify_W${S.week}.csv`;a.click();}
+function redownloadZip(){const url=S.outputFiles['__ZIP__'];if(!url){toast('No zip available');return;}const a=document.createElement('a');a.href=url;a.download=`MDV_Womenswear_WIP_W${S.week}.zip`;a.click();}
+function downloadVerifCsv(){const vf=S.verification;if(!vf){toast('Run a build first');return;}const ec=s=>{const v=String(s??'');if(/[",\n]/.test(v))return'"'+v.replace(/"/g,'""')+'"';return v;};const lines=['Source,SKU,PO,Supplier,Tab,Reason'];for(const r of vf.cpMissing)lines.push(['CP',r.sku,r.po||'',r.supplier,r.tab,r.reason].map(ec).join(','));for(const r of vf.atMissing)lines.push(['AT',r.skuBase,r.po,r.supplier,r.line_status,r.po_status].map(ec).join(','));const blob=new Blob([lines.join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`MDV_Womens_Verify_W${S.week}.csv`;a.click();}
 
 render();
 loadCachedInfo();
