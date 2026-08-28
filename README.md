@@ -1,7 +1,7 @@
-# MDV WIP Builder — Womenswear
+# MDV WIP Builder — Menswear
 
 Single-file web app that builds per-supplier Work-In-Progress Excel charts from the
-Womenswear Critical Path + live Airtable PO Lines data.
+Menswear Critical Path + live Airtable PO Lines data.
 
 ## Deploy (GitHub → Vercel)
 1. Put `index.html` at the **root** of this repository (this is the file Vercel serves).
@@ -12,7 +12,7 @@ Womenswear Critical Path + live Airtable PO Lines data.
 No build step or dependencies — it's a static file.
 
 ## What this version pulls
-- **Airtable:** Gender = **Women's** or **Unisex** (exact match on the Gender field).
+- **Airtable:** Gender = **Men's** or **Unisex** (exact match on the Gender field).
 - **Critical Path:** every style with a supplier + SKU (no TP-date requirement).
 
 ## New columns in this format
@@ -20,7 +20,5 @@ No build step or dependencies — it's a static file.
 - **PRODUCT TIER** (col AN) — pulled from the CP column "Product Tier".
 
 ## Notes
-- This is the Womenswear build. The Menswear build is identical except it pulls
-  Gender = Men's + Unisex. Keep them as two separate repos/projects.
-- Unisex styles appear in BOTH the Menswear and Womenswear builds. Say the word if
-  you want Womenswear to be Women's-only.
+- This is the Menswear build. The Womenswear build is identical except it pulls
+  Gender = Women's + Unisex. Keep them as two separate repos/projects.
