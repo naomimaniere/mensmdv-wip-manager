@@ -1,24 +1,25 @@
-# MDV WIP Builder — Menswear
+# MDV WIP Builder — Menswear (Airtable-only)
 
-Single-file web app that builds per-supplier Work-In-Progress Excel charts from the
-Menswear Critical Path + live Airtable PO Lines data.
+Single-file web app that builds per-supplier WIP Excel charts **live from Airtable** —
+the Critical Path upload has been retired.
 
 ## Deploy (GitHub → Vercel)
-1. Put `index.html` at the **root** of this repository (this is the file Vercel serves).
-2. Commit to the branch Vercel deploys from (usually `main`).
-3. Vercel auto-builds; when it shows **Ready**, the live URL is updated.
-4. Hard-refresh the app in your browser (Cmd+Shift+R / Ctrl+Shift+R) to clear cache.
+1. Put `index.html` at the **root** of the repo (Vercel serves it).
+2. Commit to the deploy branch (usually `main`); Vercel auto-builds.
+3. Hard-refresh (Cmd/Ctrl+Shift+R) after it shows **Ready**.
 
-No build step or dependencies — it's a static file.
+## What it pulls
+- **Colourways** where **Sampling Division ≠ Womenswear** (division read from the Colourway's Sampling Division; Men's, Unisex and untagged all appear — anomalies surface, never silently drop).
+- **PO lines** that are **live** — no booking (Shipment) reference (this alone drops shipped/booked lines), and status is not **Cancelled, Delivered or Arrived**. All other statuses (Draft, PO Sent, Confirmed, Awaiting Shipment, On Hold, Shipped, Part-Shipped, etc.) are kept — the booking reference decides those.
 
-## What this version pulls
-- **Airtable:** Gender = **Men's** or **Unisex** (exact match on the Gender field).
-- **Critical Path:** every style with a supplier + SKU (no TP-date requirement).
-
-## New columns in this format
-- **TIERED PRICING** (col H) — supplier-filled, carried over week to week.
-- **PRODUCT TIER** (col AN) — pulled from the CP column "Product Tier".
+## What appears / is excluded
+- **New Release** = a colourway with no PO yet (Product Status not Approved/Cancelled),
+  or a live **✨Newness** PO. **Restock** = live **🔁Repeat** PO. **Mix** = **🤩Mix** PO.
+- Excluded: Approved-with-no-PO; Cancelled-with-no-PO; any PO with a booking reference;
+  Cancelled PO/line status; Sampling Division = Womenswear.
+- A **Cancelled colourway that still has a live PO** keeps showing the PO (surfaces the clash).
 
 ## Notes
-- This is the Menswear build. The Womenswear build is identical except it pulls
-  Gender = Women's + Unisex. Keep them as two separate repos/projects.
+- Supplier name comes from the Colourway's Airtable value, so New Releases and restocks
+  for one factory share a name and land in one file.
+- No API key is stored server-side; it lives in your browser only.
