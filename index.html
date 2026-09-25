@@ -65,7 +65,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#1
 <script>
 // ═══ CONSTANTS ═══
 const AT_BASE='appcwvcnVuHI9TMdA',AT_TABLE='tbl9LR604zEX4ppR3';
-const AT_FIELDS=['fldlgN88d6xMdmgGE','fldpplV5P1srxOKiR','fldRkRlWGV612tmnd','fldMnCMSWz1XO8nCo','fld6f8fPC1WepKyEX','fldGKnrTB0ls25pge','fldFDHkhZGUowIRhq','fldZCgFjUzcRB6QV7','fld7bZKCwQKvLYKk9','fldV2NaeBOuZfeOBj','fldLTJu4MYP5IXxK3','fldutZNE72EdAT2mU','fldPmxdxfFGo2gLzz','fldHXxrmrOmo4jLDV','fldWaLqQk9z6AT8lX'];
+const AT_FIELDS=['fldlgN88d6xMdmgGE','fldpplV5P1srxOKiR','fldRkRlWGV612tmnd','fldMnCMSWz1XO8nCo','fld6f8fPC1WepKyEX','fldGKnrTB0ls25pge','fldFDHkhZGUowIRhq','fldZCgFjUzcRB6QV7','fld7bZKCwQKvLYKk9','fldV2NaeBOuZfeOBj','fldLTJu4MYP5IXxK3','fldutZNE72EdAT2mU','fldPmxdxfFGo2gLzz','fldHXxrmrOmo4jLDV','fldWaLqQk9z6AT8lX','fldxhTNDjWA26lODv'];
 const MENS_PREFIXES=['MAN','UNX','ACC','SUN'];
 const SKIP_PO=new Set(['CANCELLED','CANCEL','DELIVERED','SHIPPED','PARTIALLY SHIPPED','SHIPPED UNDER OTHER PO']);
 const SKIP_LINE=new Set(['CANCELLED','CANCEL','DELIVERED','ARRIVED','FULLY SHIPPED','ON HOLD','SHIPPED','PARTIALLY SHIPPED','SHIPPED UNDER OTHER PO']);
@@ -149,7 +149,43 @@ function normSupplier(n){if(!n)return'';let s=String(n).replace(/\u00a0/g,' ').t
 function getAtVal(cell){if(cell==null)return'';if(typeof cell==='string'||typeof cell==='number')return String(cell);if(typeof cell==='object'){if(Array.isArray(cell))return cell.map(i=>(typeof i==='object'?(i.name||''):String(i))).join(', ');return cell.name||'';}return'';}
 async function fetchAtPage(filter,offset){const fq=AT_FIELDS.map(f=>`fields%5B%5D=${f}`).join('&');const url=`https://api.airtable.com/v0/${AT_BASE}/${AT_TABLE}?pageSize=100&returnFieldsByFieldId=true&cellFormat=string&timeZone=Europe%2FLondon&userLocale=en-gb&${fq}&filterByFormula=${encodeURIComponent(filter)}${offset?'&offset='+encodeURIComponent(offset):''}`;for(let a=0;a<4;a++){const r=await fetch(url,{headers:{'Authorization':`Bearer ${S.apiKey}`}});if(r.status===429&&a<3){await new Promise(x=>setTimeout(x,1500*(a+1)));continue;}if(!r.ok)throw new Error(`AT ${r.status}: ${await r.text()}`);return r.json();}}
 async function fetchAtPrefix(prefix,onPage){const recs=[];let offset=null;while(true){const d=await fetchAtPage(`LEFT({SKU as Text},${prefix.length})="${prefix}"`,offset);recs.push(...(d.records||[]));onPage(recs.length);offset=d.offset||null;if(!offset)break;}return recs;}
-async function fetchAtData(onProgress){const skuPoMap={},skuLines={},delPoLines={},atPoSeen=new Set();const GENDER_FILTER='OR(ARRAYJOIN({Gender})="Men\'s",ARRAYJOIN({Gender})="Unisex")';const allRecs=[];let _off=null;do{const d=await fetchAtPage(GENDER_FILTER,_off);allRecs.push(...(d.records||[]));onProgress(allRecs.length);_off=d.offset||null;}while(_off);for(const r of allRecs){const c=r.fields||{};const sku=String(getAtVal(c['fldlgN88d6xMdmgGE'])||'').trim();if(!sku)continue;const ps=String(getAtVal(c['fldpplV5P1srxOKiR'])||'').trim().toUpperCase();const ls=String(getAtVal(c['fldRkRlWGV612tmnd'])||'').trim().toUpperCase();const skuBase=sku.split('-').slice(0,2).join('-');const po=String(getAtVal(c['fld6f8fPC1WepKyEX'])||'').trim();if(!po)continue;atPoSeen.add(`${skuBase}||${po}`);if(SKIP_PO.has(ps)||SKIP_LINE.has(ls)){const k=`${skuBase}||${po}`;if(!delPoLines[k])delPoLines[k]={total:0,delivered:0};delPoLines[k].total++;delPoLines[k].delivered++;continue;}const sr=String(getAtVal(c['fldPmxdxfFGo2gLzz'])||'').trim();const hasShip=!!(sr&&sr!=='nan');if(!skuLines[skuBase])skuLines[skuBase]={total:0,shipped:0};skuLines[skuBase].total++;if(hasShip){skuLines[skuBase].shipped++;continue;}if(!skuPoMap[skuBase])skuPoMap[skuBase]={};if(!skuPoMap[skuBase][po]){skuPoMap[skuBase][po]={line_status:'',po_status:'',po_sent_date:'',bulk_spec_approval:'',bulk_fabric_approval:'',qc_date:'',approved_handover_date:'',supplier:'',release:'',product_title:'',colour:'',cost:''};}const d=skuPoMap[skuBase][po];if(ls&&!d.line_status)d.line_status=ls;if(ps&&!d.po_status)d.po_status=ps;const fm={'fldMnCMSWz1XO8nCo':'supplier','fldGKnrTB0ls25pge':'release','fldFDHkhZGUowIRhq':'po_sent_date','fldZCgFjUzcRB6QV7':'bulk_spec_approval','fld7bZKCwQKvLYKk9':'bulk_fabric_approval','fldV2NaeBOuZfeOBj':'qc_date','fldLTJu4MYP5IXxK3':'approved_handover_date','fldutZNE72EdAT2mU':'product_title','fldHXxrmrOmo4jLDV':'colour','fldWaLqQk9z6AT8lX':'cost'};for(const[fid,fn]of Object.entries(fm)){const v=String(getAtVal(c[fid])||'').trim();if(v&&v!=='nan'&&!d[fn])d[fn]=fn==='supplier'?normSupplier(v):v;}}const allShipped=new Set(Object.entries(skuLines).filter(([,c])=>c.total>0&&c.total===c.shipped).map(([s])=>s));const deliveredPos=new Set(Object.entries(delPoLines).filter(([,c])=>c.total>0&&c.total===c.delivered).map(([k])=>k));return{skuPoMap,allShipped,deliveredPos,atPoSeen,total:allRecs.length};}
+// ═══ AIRTABLE SOURCE (CP retired — built from Colourway + PO Lines) ═══
+const CW_TABLE='tbldcGvSio4TWx3Z1';
+const CW_F={style:'fldceg12jnLzcR0LN',div:'fldSChEgFuUEfXhKk',pstatus:'fld2HECaH9N5EMbxK',cstatus:'fldQKWaBfD34XSAaZ',tier:'fldbwG8EVOnJjBKTQ',sup:'fldpUnO5YiXtI7QUG',colour:'fldYEV4ZqUX8cpb4k',name:'fld4Baglz1B7ezadu',tp:'fldcBZgvx7bD6ZZMH',stage:'fldcz5oBsPXRoUwr9',shoot:'fldJotJVtFfAa3Dpn',mbf:'fldpMQzosbKDSSkUi'};
+const CW_FIELDS=Object.values(CW_F);
+// Division rule is an "is NOT" so untagged / Men's / Unisex all surface (anomalies never silently drop).
+const CW_FILTER='NOT({Sampling Division}="Womenswear")';
+function canonPo(p){let s=String(p||'').replace(/\s+/g,'').trim();if(!s)return'';return /^PO/i.test(s)?s.replace(/^PO-?/i,'PO-'):s;}
+
+async function fetchCwPage(offset){const fq=CW_FIELDS.map(f=>`fields%5B%5D=${f}`).join('&');const url=`https://api.airtable.com/v0/${AT_BASE}/${CW_TABLE}?pageSize=100&returnFieldsByFieldId=true&cellFormat=string&timeZone=Europe%2FLondon&userLocale=en-gb&${fq}&filterByFormula=${encodeURIComponent(CW_FILTER)}${offset?'&offset='+encodeURIComponent(offset):''}`;for(let a=0;a<4;a++){const r=await fetch(url,{headers:{'Authorization':`Bearer ${S.apiKey}`}});if(r.status===429&&a<3){await new Promise(x=>setTimeout(x,1500*(a+1)));continue;}if(!r.ok)throw new Error(`AT colourway ${r.status}: ${await r.text()}`);return r.json();}}
+async function fetchColourways(onProgress){const map={};let off=null,total=0;do{const d=await fetchCwPage(off);for(const r of(d.records||[])){const c=r.fields||{};const style=String(getAtVal(c[CW_F.style])||'').trim();if(!style)continue;const skuBase=style.split('-').slice(0,2).join('-');if(!map[skuBase]){map[skuBase]={skuBase,style,division:String(getAtVal(c[CW_F.div])||'').trim(),productStatus:String(getAtVal(c[CW_F.pstatus])||'').trim(),costStatus:String(getAtVal(c[CW_F.cstatus])||'').trim(),tier:String(getAtVal(c[CW_F.tier])||'').trim(),supplier:normSupplier(getAtVal(c[CW_F.sup])),colour:String(getAtVal(c[CW_F.colour])||'').trim(),name:String(getAtVal(c[CW_F.name])||'').trim(),tp:fmtDateStr(getAtVal(c[CW_F.tp])),stage:String(getAtVal(c[CW_F.stage])||'').trim(),shoot:String(getAtVal(c[CW_F.shoot])||'').trim(),mbf:String(getAtVal(c[CW_F.mbf])||'').trim()};total++;}}onProgress(total);off=d.offset||null;}while(off);return map;}
+
+// PO Lines. Download scoped to non-womenswear (Gender "is not Women's" — robust to the duplicate-lookup bug).
+// A line is LIVE (kept) unless it has a booking reference OR is Cancelled at PO or line status.
+async function fetchAtData(onProgress){
+  const skuPoMap={},allPoBases=new Set();
+  const F='NOT(FIND("Women\'s",ARRAYJOIN({Gender})))';
+  const allRecs=[];let off=null;do{const d=await fetchAtPage(F,off);allRecs.push(...(d.records||[]));onProgress(allRecs.length);off=d.offset||null;}while(off);
+  for(const r of allRecs){const c=r.fields||{};
+    const sku=String(getAtVal(c['fldlgN88d6xMdmgGE'])||'').trim();if(!sku)continue;
+    const skuBase=sku.split('-').slice(0,2).join('-');
+    const po=canonPo(getAtVal(c['fld6f8fPC1WepKyEX']));if(!po)continue;
+    allPoBases.add(skuBase);
+    const ps=String(getAtVal(c['fldpplV5P1srxOKiR'])||'').trim().toUpperCase();
+    const ls=String(getAtVal(c['fldRkRlWGV612tmnd'])||'').trim().toUpperCase();
+    const sr=String(getAtVal(c['fldPmxdxfFGo2gLzz'])||'').trim();
+    const hasBooking=!!(sr&&sr!=='nan');
+    if(hasBooking||ps==='CANCELLED'||ls==='CANCELLED')continue;   // excluded: booked, or cancelled
+    if(!skuPoMap[skuBase])skuPoMap[skuBase]={};
+    if(!skuPoMap[skuBase][po])skuPoMap[skuBase][po]={line_status:'',po_status:'',po_type:'',po_sent_date:'',bulk_spec_approval:'',bulk_fabric_approval:'',qc_date:'',approved_handover_date:'',supplier:'',release:'',product_title:'',colour:'',cost:''};
+    const d=skuPoMap[skuBase][po];
+    if(ls&&!d.line_status)d.line_status=ls;if(ps&&!d.po_status)d.po_status=ps;
+    if(!d.po_type){const t=String(getAtVal(c['fldxhTNDjWA26lODv'])||'').trim();if(t)d.po_type=t;}
+    const fm={'fldMnCMSWz1XO8nCo':'supplier','fldGKnrTB0ls25pge':'release','fldFDHkhZGUowIRhq':'po_sent_date','fldZCgFjUzcRB6QV7':'bulk_spec_approval','fld7bZKCwQKvLYKk9':'bulk_fabric_approval','fldV2NaeBOuZfeOBj':'qc_date','fldLTJu4MYP5IXxK3':'approved_handover_date','fldutZNE72EdAT2mU':'product_title','fldHXxrmrOmo4jLDV':'colour','fldWaLqQk9z6AT8lX':'cost'};
+    for(const[fid,fn]of Object.entries(fm)){const v=String(getAtVal(c[fid])||'').trim();if(v&&v!=='nan'&&!d[fn])d[fn]=fn==='supplier'?normSupplier(v):v;}
+  }
+  return{skuPoMap,allPoBases,total:allRecs.length};
+}
 
 // ═══ CP PARSER ═══
 function readCellText(cell){if(!cell)return'';const v=cell.value;if(v==null||v==='')return'';if(typeof v==='string')return v.trim();if(typeof v==='number'||typeof v==='boolean')return String(v);if(v instanceof Date)return v.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'});if(typeof v==='object'){if(v.result!==undefined&&v.result!==null)return readCellText({value:v.result});if(v.richText)return v.richText.map(r=>r.text||'').join('').trim();if(v.text)return String(v.text).trim();}return'';}
@@ -271,56 +307,62 @@ function hasPrevRow(uPlus,row){if(!uPlus||!uPlus.data)return false;const rb=_sku
 //   • Every live Airtable PO becomes a row: the one matching the CP line shows on that line; all
 //     others (extra POs, or POs whose SKU isn't on the CP) become their own RESTOCK rows under
 //     their own Airtable factory.
-function buildAllWipRows(cpStyles,atData){
-  const bySupplier={};const claimed=new Set();const _atSeen=atData.atPoSeen||new Set();
+function buildAllWipRows(cwMap,atData){
+  const bySupplier={};
   const ensureSup=sup=>{if(!bySupplier[sup])bySupplier[sup]={nr:[],rs:[],removed:[]};return bySupplier[sup];};
   const stat=info=>info.line_status||info.po_status||'PO SENT';
-  const pushRestock=(po,info,fallbackSup)=>{
-    const rs=info.supplier?normSupplier(info.supplier):fallbackSup;if(!rs)return;
-    const skuBase=info._skuBase||'';
-    ensureSup(rs).rs.push({type:'RESTOCK',isRestock:true,sku:skuBase,skuBase,supplier:rs,po:'',atPo:po,name:info.product_title||'',colour:info.colour||'',mbf:'',stage:'',shoot:'',tp:'',cost:info.cost||'',costApproved:'',csd1:'',csd2:'',csd3:'',csdpp:'',release:info.release||'',tab:'',atStatus:`${po} [${stat(info)}]`,atStatusType:'normal',poSent:info.po_sent_date||'',bulkSpec:info.bulk_spec_approval||'',bulkFab:info.bulk_fabric_approval||'',qcDate:info.qc_date||'',handover:info.approved_handover_date||''});
-  };
-  for(const style of cpStyles){
-    const sup=normSupplier(style.supplier);if(!sup)continue;
-    const skuBase=style.skuBase;
-    const cpPo=style.po||'';
-    const atEnts=atData.skuPoMap[skuBase]||{};          // EXACT SKU only — no borrowing
-    const entries=Object.entries(atEnts);
-    // If the CP PO exists in Airtable but is no longer LIVE (delivered / handed over / shipped /
-    // cancelled — i.e. it's been filtered out of the live PO map), this line is done: don't emit
-    // it as an active New Release. Any OTHER live PO for the same exact SKU still shows as a
-    // restock (e.g. UNX0034-01: CP PO-2391 handed over -> drop the NR, but PO-3184 stays as a restock).
-    if(cpPo&&_atSeen.has(`${skuBase}||${cpPo}`)&&!atEnts[cpPo])continue;
-    const factOf=info=>info.supplier?normSupplier(info.supplier):sup;
-    const sameF=entries.filter(([,i])=>factOf(i)===sup);
-    const otherF=entries.filter(([,i])=>factOf(i)!==sup);
-    // Choose which AT PO sits on the NR line next to the CP PO: the exact CP-PO match if it
-    // exists, otherwise the first same-factory AT PO (so CP & AT POs sit side-by-side to compare).
-    let nrAtPo=null,nrAtInfo=null;
-    if(cpPo&&atEnts[cpPo]){nrAtPo=cpPo;nrAtInfo=atEnts[cpPo];}
-    else if(sameF.length){nrAtPo=sameF[0][0];nrAtInfo=sameF[0][1];}
-    if(nrAtPo)claimed.add(`${skuBase}||${nrAtPo}`);
-    const parts=[];let amber=false;
-    if(nrAtPo)parts.push(`${nrAtPo} [${stat(nrAtInfo)}]`);
-    if(cpPo&&!atEnts[cpPo]&&entries.length){parts.push(`⚠ CP PO ${cpPo} ≠ AT`);amber=true;}
-    if(otherF.length){const f=[...new Set(otherF.map(([,i])=>factOf(i)))].join(' / ');parts.push(`⚠ AT factory ${f} ≠ CP (${sup})`);amber=true;}
-    const info=nrAtInfo||{};
-    ensureSup(sup).nr.push({type:'NEW RELEASE',isRestock:false,sku:style.sku,skuBase,supplier:sup,po:cpPo,atPo:nrAtPo||'',name:style.name||'',colour:style.colour||'',mbf:style.mbf,stage:style.stage,shoot:style.shoot,tp:style.tp,cost:style.cost,costApproved:style.costApproved,csd1:style.csd1,csd2:style.csd2,csd3:style.csd3,csdpp:style.csdpp,tier:style.tier||'',release:style.release,tab:style.tab,atStatus:parts.join('  '),atStatusType:amber?'amber':'normal',poSent:info.po_sent_date||'',bulkSpec:info.bulk_spec_approval||'',bulkFab:info.bulk_fabric_approval||'',qcDate:info.qc_date||'',handover:info.approved_handover_date||''});
+  const typeOf=info=>{const t=(info.po_type||'').toLowerCase();if(t.includes('repeat'))return'RESTOCK';if(t.includes('mix'))return'MIX';return'NEW RELEASE';};
+  const costApp=cw=>{const s=((cw&&cw.costStatus)||'').toLowerCase();if(!s)return'';if(s.includes('approv'))return'YES';if(s.includes('revision')||s.includes('reject'))return'NO';return'';};
+  const mkRow=(type,cw,info,po,atStatus,amber)=>({type,isRestock:false,sku:(cw&&cw.style)||(cw&&cw.skuBase)||'',skuBase:(cw&&cw.skuBase)||'',supplier:(cw&&cw.supplier)||'',po:po||'',atPo:po||'',name:(cw&&cw.name)||(info&&info.product_title)||'',colour:(cw&&cw.colour)||(info&&info.colour)||'',mbf:(cw&&cw.mbf)||'',stage:(cw&&cw.stage)||'',shoot:(cw&&cw.shoot)||'',tp:(cw&&cw.tp)||'',cost:(info&&info.cost)||'',costApproved:costApp(cw),csd1:'',csd2:'',csd3:'',csdpp:'',tier:(cw&&cw.tier)||'',release:(info&&info.release)||'',tab:'',atStatus:atStatus||'',atStatusType:amber?'amber':'normal',poSent:(info&&info.po_sent_date)||'',bulkSpec:(info&&info.bulk_spec_approval)||'',bulkFab:(info&&info.bulk_fabric_approval)||'',qcDate:(info&&info.qc_date)||'',handover:(info&&info.approved_handover_date)||''});
+
+  // PASS 1
+  for(const cw of Object.values(cwMap)){
+    if(atData.allPoBases.has(cw.skuBase))continue;                 // has a PO -> Pass 2
+    const p=(cw.productStatus||'').toLowerCase();
+    if(p==='approved'||p==='cancelled')continue;                   // excluded (explicit)
+    if(!cw.supplier)continue;                                      // no supplier -> can't file (surfaced by verify)
+    ensureSup(cw.supplier).nr.push(mkRow('NEW RELEASE',cw,null,'',''));
   }
-  // PASS 2: every live Airtable PO not already claimed by a New Release line -> a restock under
-  // its own Airtable factory. Because claiming happens across ALL CP lines first, a PO that one
-  // supplier's CP line owns (e.g. Shengshi's PO-3163) can't be re-emitted as a restock by another
-  // supplier's CP line for the same SKU (e.g. a parallel Supertex sampling row with no PO).
+  // PASS 2
   for(const[skuBase,pos] of Object.entries(atData.skuPoMap)){
+    const cw=cwMap[skuBase]||null;
     for(const[po,info] of Object.entries(pos)){
-      if(claimed.has(`${skuBase}||${po}`))continue;
-      pushRestock(po,{...info,_skuBase:skuBase},'');
+      const type=typeOf(info);
+      const sup=(cw&&cw.supplier)||(info.supplier?normSupplier(info.supplier):'');
+      if(!sup)continue;
+      const cwEff=cw||{skuBase,supplier:sup};
+      const atStatus=`${po} [${stat(info)}]`;
+      const cwDiv=cw?cw:null;
+      // Flag when the PO exists but there's no menswear colourway behind it (anomaly to check)
+      const amber=!cw;
+      if(type==='RESTOCK'){
+        ensureSup(sup).rs.push({type:'RESTOCK',isRestock:true,sku:skuBase,skuBase,supplier:sup,po:'',atPo:po,name:(cw&&cw.name)||info.product_title||'',colour:(cw&&cw.colour)||info.colour||'',mbf:'',stage:'',shoot:'',tp:'',cost:info.cost||'',costApproved:'',csd1:'',csd2:'',csd3:'',csdpp:'',tier:(cw&&cw.tier)||'',release:info.release||'',tab:'',atStatus:amber?atStatus+'  ⚠ no colourway':atStatus,atStatusType:amber?'amber':'normal',poSent:info.po_sent_date||'',bulkSpec:info.bulk_spec_approval||'',bulkFab:info.bulk_fabric_approval||'',qcDate:info.qc_date||'',handover:info.approved_handover_date||''});
+      }else{
+        ensureSup(sup).nr.push(mkRow(type,cwEff,info,po,amber?atStatus+'  ⚠ no colourway':atStatus,amber));
+      }
     }
   }
   return bySupplier;
 }
-function checkSuppliers(cpStyles,atData){const cpSet=new Set();for(const s of cpStyles){const n=normSupplier(s.supplier);if(n)cpSet.add(n);}const atSet=new Set();for(const pos of Object.values(atData.skuPoMap))for(const info of Object.values(pos))if(info.supplier)atSet.add(info.supplier);return{matchedCount:[...cpSet].filter(s=>atSet.has(s)).length,cpOnly:[...cpSet].filter(s=>!atSet.has(s)).sort(),atOnly:[...atSet].filter(s=>!cpSet.has(s)).sort()};}
-function verifyBuild(bySupplier,cpStyles,atData){const skusInWip=new Set(),skuPosInWip=new Set();for(const bucket of Object.values(bySupplier)){for(const r of[...(bucket.nr||[]),...(bucket.rs||[]),...(bucket.removed||[])]){if(r.sku)skusInWip.add(r.sku);if(r.skuBase)skusInWip.add(r.skuBase);if(r.atPo&&r.skuBase)skuPosInWip.add(`${r.skuBase}||${r.atPo}`);const ms=(r.atStatus||'').match(/PO[-\d.]+/g)||[];const base=r.skuBase||(r.sku?r.sku.split('-').slice(0,2).join('-'):'');for(const po of ms)if(base)skuPosInWip.add(`${base}||${po}`);}}const cpMissing=[];for(const s of cpStyles){if(skusInWip.has(s.sku)||skusInWip.has(s.skuBase))continue;let reason='';if(!s.tp)reason='no TP send date';else if(!s.supplier)reason='no supplier';else reason='supplier name mismatch';cpMissing.push({sku:s.sku,supplier:s.supplier||'',name:s.name||'',tab:s.tab||'',po:s.po||'',reason});}const atMissing=[];for(const[skuBase,pos] of Object.entries(atData.skuPoMap||{})){for(const[po,info] of Object.entries(pos)){if(skuPosInWip.has(`${skuBase}||${po}`))continue;atMissing.push({skuBase,po,supplier:info.supplier||'',product:info.product_title||'',line_status:info.line_status||'',po_status:info.po_status||''});}}cpMissing.sort((a,b)=>(a.supplier||'').localeCompare(b.supplier||'')||a.sku.localeCompare(b.sku));atMissing.sort((a,b)=>(a.supplier||'').localeCompare(b.supplier||'')||a.po.localeCompare(b.po));return{cpMissing,atMissing};}
+function checkSuppliers(cwMap,atData){const cpSet=new Set();for(const cw of Object.values(cwMap))if(cw.supplier)cpSet.add(cw.supplier);const atSet=new Set();for(const pos of Object.values(atData.skuPoMap))for(const info of Object.values(pos))if(info.supplier)atSet.add(normSupplier(info.supplier));return{matchedCount:[...cpSet].filter(s=>atSet.has(s)).length,cpOnly:[...cpSet].filter(s=>!atSet.has(s)).sort(),atOnly:[...atSet].filter(s=>!cpSet.has(s)).sort()};}
+function verifyBuild(bySupplier,cwMap,atData){
+  const skusInWip=new Set(),skuPosInWip=new Set();
+  for(const bucket of Object.values(bySupplier)){for(const r of[...(bucket.nr||[]),...(bucket.rs||[]),...(bucket.removed||[])]){if(r.sku)skusInWip.add(r.sku);if(r.skuBase)skusInWip.add(r.skuBase);if(r.atPo&&r.skuBase)skuPosInWip.add(`${r.skuBase}||${r.atPo}`);}}
+  const cpMissing=[];
+  for(const cw of Object.values(cwMap)){
+    if(skusInWip.has(cw.style)||skusInWip.has(cw.skuBase))continue;
+    if(atData.allPoBases.has(cw.skuBase))continue;                 // has a PO but no live one — legitimately off
+    const p=(cw.productStatus||'').toLowerCase();
+    if(p==='approved'||p==='cancelled')continue;                   // legitimately excluded
+    let reason=!cw.supplier?'no supplier on colourway':'not built (check)';
+    cpMissing.push({sku:cw.style,supplier:cw.supplier||'',name:cw.name||'',tab:cw.division||'',po:'',reason});
+  }
+  const atMissing=[];
+  for(const[skuBase,pos] of Object.entries(atData.skuPoMap||{})){for(const[po,info] of Object.entries(pos)){if(skuPosInWip.has(`${skuBase}||${po}`))continue;atMissing.push({skuBase,po,supplier:info.supplier||'',product:info.product_title||'',line_status:info.line_status||'',po_status:info.po_status||''});}}
+  cpMissing.sort((a,b)=>(a.supplier||'').localeCompare(b.supplier||'')||a.sku.localeCompare(b.sku));
+  atMissing.sort((a,b)=>(a.supplier||'').localeCompare(b.supplier||'')||a.po.localeCompare(b.po));
+  return{cpMissing,atMissing};
+}
 
 // ═══ EXCEL WRITER ═══
 const DARK='FF1A1A2E',WHITE='FFFFFFFF',GREEN_F='FFC6EFCE',GREEN_T='FF276221',RED_T='FF8B1A1A',PURPLE_F='FFEDE9FE',PURPLE_T='FF5B21B6',AMBER_F='FFFFF2CC',AMBER_T='FF7D5A00',REMOVED_F='FFFFCCCC',STATIC_HDR='FF1E6091',STRIPPED='FFF8F8F8';
@@ -453,19 +495,22 @@ function setupDrop(id,cb){const el=document.getElementById(id);if(!el)return;el.
 // ═══ BUILD ═══
 async function runBuild(){
   if(S.buildState!=='idle')return;
-  if(!S.cpStyles){toast('Upload a Critical Path file first');return;}
+  // source is Airtable — no CP upload
   if(!S.apiKey){toast('Add your Airtable API key in Settings');return;}
   S.buildState='fetching';S.buildLog=[];S.buildResults=[];S.buildProgress=0;S.outputFiles={};S.supplierCheck=null;S.verification=null;render();
   try{
-    log('Fetching Airtable data (MAN / UNX / ACC / SUN)...');setProgress(5);
-    S.atData=await fetchAtData(n=>{log(`  ${n.toLocaleString()} records fetched...`);});
-    log(`  Done. ${Object.keys(S.atData.skuPoMap).length} active SKU bases.`,'ok');setProgress(30);
+    log('Fetching colourways (Menswear — Sampling Division ≠ Womenswear)...');setProgress(5);
+    const cwMap=await fetchColourways(n=>{log(`  ${n.toLocaleString()} colourways...`);});S.cwMap=cwMap;
+    log(`  ${Object.keys(cwMap).length} menswear colourways`,'ok');setProgress(20);
+    log('Fetching live PO lines...');
+    S.atData=await fetchAtData(n=>{if(n-(S._lastN||0)>=5000){log(`  ${n.toLocaleString()} PO lines...`);S._lastN=n;}});S._lastN=0;
+    log(`  ${Object.keys(S.atData.skuPoMap).length} SKU bases with live POs`,'ok');setProgress(30);
     S.buildState='building';render();
     log('Building WIP rows...');
-    const bySupplier=buildAllWipRows(S.cpStyles,S.atData);
+    const bySupplier=buildAllWipRows(cwMap,S.atData);
     const sups=Object.keys(bySupplier).sort();
     log(`  ${sups.length} supplier files to generate`,'ok');
-    S.supplierCheck=checkSuppliers(S.cpStyles,S.atData);setProgress(40);
+    S.supplierCheck=checkSuppliers(S.cwMap,S.atData);setProgress(40);
     log('Loading previous WIP data...');
     const prevBySup={};
     // Case/punctuation-insensitive supplier match key. The build groups rows under the
@@ -528,7 +573,7 @@ async function runBuild(){
     const zipBuf=await zip.generateAsync({type:'arraybuffer'});
     S.outputFiles['__ZIP__']=URL.createObjectURL(new Blob([zipBuf],{type:'application/zip'}));
     S.buildResults=results;
-    log('Verifying...');S.verification=verifyBuild(bySupplier,S.cpStyles,S.atData);
+    log('Verifying...');S.verification=verifyBuild(bySupplier,S.cwMap,S.atData);
     const{cpMissing,atMissing}=S.verification;
     if(!cpMissing.length&&!atMissing.length)log('  All CP styles and AT POs accounted for','ok');
     else log(`  ${cpMissing.length} CP + ${atMissing.length} AT items not in any WIP`,'warn');
@@ -565,16 +610,19 @@ async function importCache(){
 
 // ═══ RENDER ═══
 function render(){
-  const canBuild=!!(S.cpStyles&&S.apiKey&&S.buildState==='idle');
+  const canBuild=!!(S.apiKey&&S.buildState==='idle');
   let html=`<div class="header"><div><div class="h-title">MDV WIP Builder — Menswear</div><div class="h-sub">Week ${S.week} &middot; ${TODAY}</div></div><div style="color:rgba(255,255,255,.5);font-size:12px">${S.apiKey?'&#x1F7E2; Airtable connected':'&#x1F534; No API key'}</div></div>
   <div class="nav">${['build','tracker','history','settings'].map(t=>`<button class="ntab${S.tab===t?' active':''}" onclick="S.tab='${t}';render()">${t.charAt(0).toUpperCase()+t.slice(1)}</button>`).join('')}</div>
   <div class="page">`;
 
   if(S.tab==='build'){
     // CP
-    html+=`<div class="card"><div class="card-title">1 &middot; Critical Path</div>`;
-    if(S.cpFileInfo){const ago=S.cpFileInfo.parsedAt?` &middot; parsed ${fmtRelative(S.cpFileInfo.parsedAt)}`:'';html+=`<div style="background:#F1F8E9;border:1px solid #A5D6A7;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:10px">&#10003; <strong>${esc(S.cpFileInfo.name)}</strong>${S.cpFileInfo.size?` &middot; ${fmtBytes(S.cpFileInfo.size)}`:''}${ago} &nbsp;<button class="btn" style="padding:4px 10px;font-size:11px;float:right" onclick="clearCpCache();S.cpStyles=null;S.cpFileInfo=null;render()">Clear</button></div>`;}
-    html+=`<div class="drop-zone${S.cpStyles?' has-files':''}" id="cp-drop"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="1.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><div style="margin-top:8px;font-size:13px;color:#555">${S.cpParsing?'Parsing...':S.cpStyles?`${S.cpStyles.length.toLocaleString()} styles loaded — drop a new file to update`:'Drop Menswear Critical Path xlsx here'}</div><div style="font-size:11px;color:#888;margin-top:4px">Click to browse &middot; Cached between sessions</div></div></div>`;
+    html+=`<div class="card"><div class="card-title">1 &middot; Source &mdash; Airtable</div>
+      <div style="background:#EEF4FF;border:1px solid #BBDEFB;border-radius:8px;padding:12px 14px;font-size:13px;color:#0D47A1;line-height:1.6">
+        Built live from Airtable &mdash; no Critical Path upload.<br>
+        <strong>Colourways</strong> (Sampling Division &ne; Womenswear) + <strong>live PO lines</strong> (no booking reference, not cancelled).
+        <div style="font-size:11px;color:#555;margin-top:6px">Just add your API key in Settings and press Build.</div>
+      </div></div>`;
     // Previous WIPs — FIX 2 clearer wording
     html+=`<div class="card"><div class="card-title">2 &middot; Previous WIPs <span style="font-size:11px;color:#888;font-weight:400">(optional)</span></div>`;
     const hasCached=Object.keys(S.cachedComments).length>0;
@@ -588,7 +636,7 @@ function render(){
     html+=`<div class="drop-zone${S.prevWipFiles.length?' has-files':''}" id="wip-drop"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="1.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><div style="margin-top:8px;font-size:13px;color:#555">Drop last week's WIP files here to load comment history</div><div style="font-size:11px;color:#888;margin-top:4px">WIP_Supplier_Name.xlsx &middot; Each file updates only that supplier's cache</div></div>
     ${S.prevWipFiles.map((f,i)=>`<div class="file-item"><span class="fi-name">${esc(f.name)}</span><span class="fi-size">${fmtBytes(f.file.size)}</span><span class="fi-rm" onclick="S.prevWipFiles.splice(${i},1);render()">&#10005;</span></div>`).join('')}</div>`;
     // Build button
-    html+=`<div style="text-align:center;margin-bottom:20px"><button class="btn btn-green" ${canBuild?'':'disabled'} onclick="runBuild()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>${S.buildState==='fetching'?'Fetching Airtable...':S.buildState==='building'?'Building WIPs...':'Build WIP Charts'}</button>${!S.cpStyles?'<div style="font-size:12px;color:#888;margin-top:8px">Upload Critical Path above to enable</div>':''}${!S.apiKey?'<div style="font-size:12px;color:#e65100;margin-top:8px">Add Airtable API key in Settings</div>':''}</div>`;
+    html+=`<div style="text-align:center;margin-bottom:20px"><button class="btn btn-green" ${canBuild?'':'disabled'} onclick="runBuild()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>${S.buildState==='fetching'?'Fetching Airtable...':S.buildState==='building'?'Building WIPs...':'Build WIP Charts'}</button>${!S.apiKey?'<div style="font-size:12px;color:#e65100;margin-top:8px">Add Airtable API key in Settings</div>':''}</div>`;
     if(S.buildState!=='idle'){html+=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:13px;font-weight:500">Build progress</span><span style="font-size:12px;color:#888">${S.buildProgress}%</span></div><div class="progress-wrap"><div class="progress-bar" id="build-pb" style="width:${S.buildProgress}%"></div></div><div class="log" id="build-log">${S.buildLog.map(l=>`<p class="log-line ${l.type}">${esc(l.msg)}</p>`).join('')}</div></div>`;}
     if(S.buildState==='done'&&S.supplierCheck){const sc=S.supplierCheck,hasIss=sc.cpOnly.length||sc.atOnly.length;html+=`<div class="card" style="border-left:4px solid ${hasIss?'#E65100':'#276221'};background:${hasIss?'#FFF8E7':'#F1F8E9'}"><div class="card-title" style="color:${hasIss?'#E65100':'#276221'}">${hasIss?'&#9888;':'&#10003;'} Supplier check — ${hasIss?`${sc.cpOnly.length+sc.atOnly.length} issues`:`All ${sc.matchedCount} match`}</div>${sc.cpOnly.length?`<div style="font-size:12px;margin-bottom:6px"><strong>In CP only:</strong> ${sc.cpOnly.map(s=>esc(s)).join(' &middot; ')}</div>`:''} ${sc.atOnly.length?`<div style="font-size:12px"><strong>In AT only:</strong> ${sc.atOnly.map(s=>esc(s)).join(' &middot; ')}</div>`:''}</div>`;}
     if(S.buildState==='done'&&S.verification){const vf=S.verification,tot=vf.cpMissing.length+vf.atMissing.length;html+=`<div class="card" style="border-left:4px solid ${tot?'#C62828':'#276221'};background:${tot?'#FFEBEE':'#F1F8E9'}"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div class="card-title" style="color:${tot?'#C62828':'#276221'};margin:0">${tot?'&#9888;':'&#10003;'} Verification — ${tot?`${tot} items not in any WIP`:'Every CP style and AT PO is in a WIP'}</div>${tot?`<button class="btn btn-dark" style="padding:6px 12px;font-size:12px" onclick="downloadVerifCsv()">CSV</button>`:''}</div>${vf.cpMissing.length?`<div style="font-size:12px;font-weight:500;color:#C62828;margin-bottom:6px">CP styles missing (${vf.cpMissing.length})</div><div style="background:#fff;border:1px solid #ef9a9a;border-radius:6px;overflow:hidden;margin-bottom:12px"><table class="tbl" style="margin:0"><thead><tr><th>SKU</th><th>Supplier</th><th>Tab</th><th>Reason</th></tr></thead><tbody>${vf.cpMissing.slice(0,20).map((r,i)=>`<tr class="${i%2?'row-even':''}"><td>${esc(r.sku)}</td><td>${esc(r.supplier)}</td><td style="font-size:11px">${esc(r.tab)}</td><td style="font-size:11px;color:#C62828">${esc(r.reason)}</td></tr>`).join('')}</tbody></table></div>`:''}${vf.atMissing.length?`<div style="font-size:12px;font-weight:500;color:#C62828;margin-bottom:6px">AT POs missing (${vf.atMissing.length})</div><div style="background:#fff;border:1px solid #ef9a9a;border-radius:6px;overflow:hidden"><table class="tbl" style="margin:0"><thead><tr><th>SKU Base</th><th>PO</th><th>Supplier</th><th>Status</th></tr></thead><tbody>${vf.atMissing.slice(0,20).map((r,i)=>`<tr class="${i%2?'row-even':''}"><td>${esc(r.skuBase)}</td><td>${esc(r.po)}</td><td>${esc(r.supplier)}</td><td style="font-size:11px">${esc(r.line_status||r.po_status)}</td></tr>`).join('')}</tbody></table></div>`:''}    </div>`;}
@@ -630,7 +678,6 @@ function render(){
   html+='</div>';
   document.getElementById('app').innerHTML=html;
   if(S.tab==='build'){
-    setupDrop('cp-drop',async(files)=>{const xlsx=files.find(f=>f.name.endsWith('.xlsx'));if(!xlsx)return;S.cpFile=xlsx;S.cpParsing=true;S.cpFileInfo={name:xlsx.name,size:xlsx.size,parsedAt:null};S.cpStyles=null;S.buildState='idle';render();try{const styles=await parseCriticalPath(xlsx);S.cpStyles=styles;S.cpFileInfo.parsedAt=new Date().toISOString();await saveCpCache(xlsx.name,xlsx.size,styles);toast(`Parsed ${styles.length} styles`);}catch(e){alert('Failed to parse CP: '+e.message);S.cpFile=null;S.cpFileInfo=null;S.cpStyles=null;}finally{S.cpParsing=false;render();}});
     setupDrop('wip-drop',files=>{const x=files.filter(f=>f.name.endsWith('.xlsx'));x.forEach(f=>{if(!S.prevWipFiles.find(e=>e.name===f.name))S.prevWipFiles.push({name:f.name,file:f});});render();});
     const logEl=document.getElementById('build-log');if(logEl)logEl.scrollTop=logEl.scrollHeight;
   }
