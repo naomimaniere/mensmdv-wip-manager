@@ -151,14 +151,14 @@ async function fetchAtPage(filter,offset){const fq=AT_FIELDS.map(f=>`fields%5B%5
 async function fetchAtPrefix(prefix,onPage){const recs=[];let offset=null;while(true){const d=await fetchAtPage(`LEFT({SKU as Text},${prefix.length})="${prefix}"`,offset);recs.push(...(d.records||[]));onPage(recs.length);offset=d.offset||null;if(!offset)break;}return recs;}
 // ═══ AIRTABLE SOURCE (CP retired — built from Colourway + PO Lines) ═══
 const CW_TABLE='tbldcGvSio4TWx3Z1';
-const CW_F={style:'fldceg12jnLzcR0LN',div:'fldSChEgFuUEfXhKk',pstatus:'fld2HECaH9N5EMbxK',cstatus:'fldQKWaBfD34XSAaZ',tier:'fldbwG8EVOnJjBKTQ',sup:'fldpUnO5YiXtI7QUG',colour:'fldYEV4ZqUX8cpb4k',name:'fld4Baglz1B7ezadu',tp:'fldcBZgvx7bD6ZZMH',stage:'fldcz5oBsPXRoUwr9',shoot:'fldJotJVtFfAa3Dpn',mbf:'fldpMQzosbKDSSkUi',season:'fldIJVrTP2zzl6Inu'};
+const CW_F={style:'fldceg12jnLzcR0LN',div:'fldSChEgFuUEfXhKk',pstatus:'fld2HECaH9N5EMbxK',cstatus:'fldQKWaBfD34XSAaZ',tier:'fldbwG8EVOnJjBKTQ',sup:'fldpUnO5YiXtI7QUG',colour:'fldYEV4ZqUX8cpb4k',name:'fld4Baglz1B7ezadu',tp:'fldcBZgvx7bD6ZZMH',stage:'fldcz5oBsPXRoUwr9',shoot:'fldJotJVtFfAa3Dpn',mbf:'fldpMQzosbKDSSkUi',rmonth:'fldiwDmbVrwrbnp4y'};
 const CW_FIELDS=Object.values(CW_F);
 // Division rule is an "is NOT" so untagged / Men's / Unisex all surface (anomalies never silently drop).
 const CW_FILTER='';   // fetch ALL colourways; menswear vs womenswear decided in the build by Sampling Division
 function canonPo(p){let s=String(p||'').replace(/\s+/g,'').trim();if(!s)return'';return /^PO/i.test(s)?s.replace(/^PO-?/i,'PO-'):s;}
 
 async function fetchCwPage(offset){const fq=CW_FIELDS.map(f=>`fields%5B%5D=${f}`).join('&');const url=`https://api.airtable.com/v0/${AT_BASE}/${CW_TABLE}?pageSize=100&returnFieldsByFieldId=true&cellFormat=string&timeZone=Europe%2FLondon&userLocale=en-gb&${fq}${CW_FILTER?'&filterByFormula='+encodeURIComponent(CW_FILTER):''}${offset?'&offset='+encodeURIComponent(offset):''}`;for(let a=0;a<4;a++){const r=await fetch(url,{headers:{'Authorization':`Bearer ${S.apiKey}`}});if(r.status===429&&a<3){await new Promise(x=>setTimeout(x,1500*(a+1)));continue;}if(!r.ok)throw new Error(`AT colourway ${r.status}: ${await r.text()}`);return r.json();}}
-async function fetchColourways(onProgress){const map={};let off=null,total=0;do{const d=await fetchCwPage(off);for(const r of(d.records||[])){const c=r.fields||{};const style=String(getAtVal(c[CW_F.style])||'').trim();if(!style)continue;const skuBase=style.split('-').slice(0,2).join('-');if(!map[skuBase]){map[skuBase]={skuBase,style,division:String(getAtVal(c[CW_F.div])||'').trim(),productStatus:String(getAtVal(c[CW_F.pstatus])||'').trim(),costStatus:String(getAtVal(c[CW_F.cstatus])||'').trim(),tier:String(getAtVal(c[CW_F.tier])||'').trim(),supplier:normSupplier(getAtVal(c[CW_F.sup])),colour:String(getAtVal(c[CW_F.colour])||'').trim(),name:String(getAtVal(c[CW_F.name])||'').trim(),tp:fmtDateStr(getAtVal(c[CW_F.tp])),stage:String(getAtVal(c[CW_F.stage])||'').trim(),shoot:String(getAtVal(c[CW_F.shoot])||'').trim(),mbf:String(getAtVal(c[CW_F.mbf])||'').trim(),season:String(getAtVal(c[CW_F.season])||'').trim()};total++;}}onProgress(total);off=d.offset||null;}while(off);return map;}
+async function fetchColourways(onProgress){const map={};let off=null,total=0;do{const d=await fetchCwPage(off);for(const r of(d.records||[])){const c=r.fields||{};const style=String(getAtVal(c[CW_F.style])||'').trim();if(!style)continue;const skuBase=style.split('-').slice(0,2).join('-');if(!map[skuBase]){map[skuBase]={skuBase,style,division:String(getAtVal(c[CW_F.div])||'').trim(),productStatus:String(getAtVal(c[CW_F.pstatus])||'').trim(),costStatus:String(getAtVal(c[CW_F.cstatus])||'').trim(),tier:String(getAtVal(c[CW_F.tier])||'').trim(),supplier:normSupplier(getAtVal(c[CW_F.sup])),colour:String(getAtVal(c[CW_F.colour])||'').trim(),name:String(getAtVal(c[CW_F.name])||'').trim(),tp:fmtDateStr(getAtVal(c[CW_F.tp])),stage:String(getAtVal(c[CW_F.stage])||'').trim(),shoot:String(getAtVal(c[CW_F.shoot])||'').trim(),mbf:String(getAtVal(c[CW_F.mbf])||'').trim(),rmonth:String(getAtVal(c[CW_F.rmonth])||'').trim()};total++;}}onProgress(total);off=d.offset||null;}while(off);return map;}
 
 // PO Lines. Download scoped to non-womenswear (Gender "is not Women's" — robust to the duplicate-lookup bug).
 // A line is LIVE (kept) unless it has a booking reference OR is Cancelled at PO or line status.
@@ -285,14 +285,14 @@ function wipBaseKey(sku,atKey,colour){return `${sku}||${_poToken(atKey)}||${_col
 // each stored row once preserves order for true duplicates and prevents duplication.
 function _skuBase(s){return String(s||'').split('-').slice(0,2).join('-');}
 function parseRowKey(key){const h=key.lastIndexOf('##');const base=h>=0?key.slice(0,h):key;const occ=h>=0?(parseInt(key.slice(h+2))||0):0;const p=base.split('||');const sku=p[0]||'';return{key,sku,skuBase:_skuBase(sku),poToken:p[1]||'',colour:(p[2]||'').toLowerCase(),occ};}
-function buildPrevIndex(uPlus){if(!uPlus||!uPlus.data)return{meta:[],consumed:new Set()};return{meta:Object.keys(uPlus.data).map(parseRowKey),consumed:new Set()};}
+function buildPrevIndex(uPlus){if(!uPlus||!uPlus.data)return{meta:[],consumed:new Set()};const _m=uPlus.meta||{};return{meta:Object.keys(uPlus.data).map(k=>{const e=parseRowKey(k);e.isRS=/RESTOCK/i.test((_m[k]&&_m[k].type)||'');return e;}),consumed:new Set()};}
 // Exact line identity for "came off the WIP" detection (separate from the fuzzy comment match):
 // a New Release line is SKU+colour (a PO being raised is the same line); a restock line is
 // SKU+PO — its PO is the unique identifier; colour comes from Airtable and can be blank one
 // week and filled the next, so it must NOT be part of the restock key (that split PO-2815).
 function _redNrKey(sku,colour){return `${String(sku||'').trim().toUpperCase()}||${String(colour||'').trim().toUpperCase()}`;}
 function _redRsKey(sku,po){return `${String(sku||'').trim().toUpperCase()}||RS||${String(po||'').trim().toUpperCase()}`;}
-function matchPrevRow(index,row){if(!index||!index.meta.length)return null;const rSkuBase=_skuBase(row.sku||'');const rSku=String(row.sku||'');const rColour=_colToken(row.colour);const rPo=_poToken(row.atPo||row.atStatus||'');const cands=index.meta.filter(m=>!index.consumed.has(m.key)&&((m.skuBase&&m.skuBase===rSkuBase)||m.sku===rSku||m.sku===rSkuBase||m.skuBase===rSku));if(!cands.length)return null;const cm=rColour?cands.filter(m=>m.colour===rColour):[];const pool=cm.length?cm:cands;let best=null,bestScore=-1;for(const m of pool){let score=0;if(m.poToken&&rPo&&m.poToken===rPo)score+=2;if(m.sku===rSku)score+=1;if(score>bestScore){bestScore=score;best=m;}}if(best){index.consumed.add(best.key);return best.key;}return null;}
+function matchPrevRow(index,row){if(!index||!index.meta.length)return null;const rSkuBase=_skuBase(row.sku||'');const rSku=String(row.sku||'');const rColour=_colToken(row.colour);const rPo=_poToken(row.atPo||row.atStatus||'');const rIsRS=!!row.isRestock;let cands=index.meta.filter(m=>!index.consumed.has(m.key)&&((m.skuBase&&m.skuBase===rSkuBase)||m.sku===rSku||m.sku===rSkuBase||m.skuBase===rSku));if(!cands.length)return null;if(rIsRS){cands=cands.filter(m=>m.isRS&&m.poToken&&rPo&&m.poToken===rPo);}else{cands=cands.filter(m=>!m.isRS);const cm=rColour?cands.filter(m=>m.colour===rColour):[];if(cm.length)cands=cm;}if(!cands.length)return null;let best=null,bestScore=-1;for(const m of cands){let score=0;if(m.poToken&&rPo&&m.poToken===rPo)score+=2;if(m.colour&&rColour&&m.colour===rColour)score+=1;if(m.sku===rSku)score+=1;if(score>bestScore){bestScore=score;best=m;}}if(best){index.consumed.add(best.key);return best.key;}return null;}
 // Non-consuming "does any previous row exist for this style?" — for the no-history count only.
 function hasPrevRow(uPlus,row){if(!uPlus||!uPlus.data)return false;const rb=_skuBase(row.sku||'');const rs=String(row.sku||'');return Object.keys(uPlus.data).some(k=>{const m=parseRowKey(k);return(m.skuBase&&m.skuBase===rb)||m.sku===rs||m.sku===rb||m.skuBase===rs;});}
 
@@ -313,7 +313,7 @@ function buildAllWipRows(cwMap,atData){
   const stat=info=>info.line_status||info.po_status||'PO SENT';
   const typeOf=info=>{const t=(info.po_type||'').toLowerCase();if(t.includes('repeat'))return'RESTOCK';if(t.includes('mix'))return'MIX';return'NEW RELEASE';};
   const costApp=cw=>{const s=((cw&&cw.costStatus)||'').toLowerCase();if(!s)return'';if(s.includes('approv'))return'YES';if(s.includes('revision')||s.includes('reject'))return'NO';return'';};
-  const mkRow=(type,cw,info,po,atStatus,amber)=>({type,isRestock:false,sku:(cw&&cw.style)||(cw&&cw.skuBase)||'',skuBase:(cw&&cw.skuBase)||'',supplier:(cw&&cw.supplier)||'',po:po||'',atPo:po||'',name:(cw&&cw.name)||(info&&info.product_title)||'',colour:(cw&&cw.colour)||(info&&info.colour)||'',mbf:(cw&&cw.mbf)||'',stage:(cw&&cw.stage)||'',shoot:(cw&&cw.shoot)||'',tp:(cw&&cw.tp)||'',cost:(info&&info.cost)||'',costApproved:costApp(cw),csd1:'',csd2:'',csd3:'',csdpp:'',tier:(cw&&cw.tier)||'',release:(info&&info.release)||(cw&&cw.season)||'',tab:'',atStatus:atStatus||'',atStatusType:amber?'amber':'normal',poSent:(info&&info.po_sent_date)||'',bulkSpec:(info&&info.bulk_spec_approval)||'',bulkFab:(info&&info.bulk_fabric_approval)||'',qcDate:(info&&info.qc_date)||'',handover:(info&&info.approved_handover_date)||''});
+  const mkRow=(type,cw,info,po,atStatus,amber)=>({type,isRestock:false,sku:(cw&&cw.style)||(cw&&cw.skuBase)||'',skuBase:(cw&&cw.skuBase)||'',supplier:(cw&&cw.supplier)||'',po:po||'',atPo:po||'',name:(cw&&cw.name)||(info&&info.product_title)||'',colour:(cw&&cw.colour)||(info&&info.colour)||'',mbf:(cw&&cw.mbf)||'',stage:(cw&&cw.stage)||'',shoot:(cw&&cw.shoot)||'',tp:(cw&&cw.tp)||'',cost:(info&&info.cost)||'',costApproved:costApp(cw),csd1:'',csd2:'',csd3:'',csdpp:'',tier:(cw&&cw.tier)||'',release:(info&&info.release)||(cw&&cw.rmonth)||'',tab:'',atStatus:atStatus||'',atStatusType:amber?'amber':'normal',poSent:(info&&info.po_sent_date)||'',bulkSpec:(info&&info.bulk_spec_approval)||'',bulkFab:(info&&info.bulk_fabric_approval)||'',qcDate:(info&&info.qc_date)||'',handover:(info&&info.approved_handover_date)||''});
 
   // PASS 1
   const _isW=cw=>((cw&&cw.division)||'').toLowerCase()==='womenswear';
@@ -322,8 +322,8 @@ function buildAllWipRows(cwMap,atData){
     if(atData.allPoBases.has(cw.skuBase))continue;                 // has a PO -> Pass 2
     const p=(cw.productStatus||'').toLowerCase();
     if(p==='approved'||p==='cancelled')continue;                   // excluded (explicit)
-    if(!cw.supplier)continue;                                      // no supplier -> can't file (surfaced by verify)
-    ensureSup(cw.supplier).nr.push(mkRow('NEW RELEASE',cw,null,'',''));
+    const _sup=cw.supplier||'UNASSIGNED';                          // no supplier yet -> surface in an Unassigned file
+    ensureSup(_sup).nr.push(mkRow('NEW RELEASE',{...cw,supplier:_sup},null,'',''));
   }
   // PASS 2
   for(const[skuBase,pos] of Object.entries(atData.skuPoMap)){
@@ -331,15 +331,14 @@ function buildAllWipRows(cwMap,atData){
     if(_isW(cw))continue;                                          // womenswear colourway -> its POs are not menswear
     for(const[po,info] of Object.entries(pos)){
       const type=typeOf(info);
-      const sup=(cw&&cw.supplier)||(info.supplier?normSupplier(info.supplier):'');
-      if(!sup)continue;
+      const sup=(cw&&cw.supplier)||(info.supplier?normSupplier(info.supplier):'')||'UNASSIGNED';
       const cwEff=cw||{skuBase,supplier:sup};
       const atStatus=`${po} [${stat(info)}]`;
       const cwDiv=cw?cw:null;
       // Flag when the PO exists but there's no menswear colourway behind it (anomaly to check)
       const amber=!cw;
       if(type==='RESTOCK'){
-        ensureSup(sup).rs.push({type:'RESTOCK',isRestock:true,sku:skuBase,skuBase,supplier:sup,po:'',atPo:po,name:(cw&&cw.name)||info.product_title||'',colour:(cw&&cw.colour)||info.colour||'',mbf:'',stage:'',shoot:'',tp:'',cost:info.cost||'',costApproved:'',csd1:'',csd2:'',csd3:'',csdpp:'',tier:(cw&&cw.tier)||'',release:info.release||(cw&&cw.season)||'',tab:'',atStatus:amber?atStatus+'  ⚠ no colourway':atStatus,atStatusType:amber?'amber':'normal',poSent:info.po_sent_date||'',bulkSpec:info.bulk_spec_approval||'',bulkFab:info.bulk_fabric_approval||'',qcDate:info.qc_date||'',handover:info.approved_handover_date||''});
+        ensureSup(sup).rs.push({type:'RESTOCK',isRestock:true,sku:skuBase,skuBase,supplier:sup,po:'',atPo:po,name:(cw&&cw.name)||info.product_title||'',colour:(cw&&cw.colour)||info.colour||'',mbf:'',stage:'',shoot:'',tp:'',cost:info.cost||'',costApproved:'',csd1:'',csd2:'',csd3:'',csdpp:'',tier:(cw&&cw.tier)||'',release:info.release||(cw&&cw.rmonth)||'',tab:'',atStatus:amber?atStatus+'  ⚠ no colourway':atStatus,atStatusType:amber?'amber':'normal',poSent:info.po_sent_date||'',bulkSpec:info.bulk_spec_approval||'',bulkFab:info.bulk_fabric_approval||'',qcDate:info.qc_date||'',handover:info.approved_handover_date||''});
       }else{
         ensureSup(sup).nr.push(mkRow(type,cwEff,info,po,amber?atStatus+'  ⚠ no colourway':atStatus,amber));
       }
