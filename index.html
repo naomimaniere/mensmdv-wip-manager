@@ -319,7 +319,7 @@ function buildAllWipRows(cwMap,atData){
   const _isW=cw=>((cw&&cw.division)||'').toLowerCase()==='womenswear';
   for(const cw of Object.values(cwMap)){
     if(_isW(cw))continue;                                          // womenswear -> not on the menswear WIP
-    if(atData.allPoBases.has(cw.skuBase))continue;                 // has a PO -> Pass 2
+    if(atData.skuPoMap[cw.skuBase])continue;                       // has a LIVE PO -> shown via Pass 2 (cancelled/done POs don't count)
     const p=(cw.productStatus||'').toLowerCase();
     if(p==='approved'||p==='cancelled')continue;                   // excluded (explicit)
     const _sup=cw.supplier||'UNASSIGNED';                          // no supplier yet -> surface in an Unassigned file
@@ -331,8 +331,8 @@ function buildAllWipRows(cwMap,atData){
     if(_isW(cw))continue;                                          // womenswear colourway -> its POs are not menswear
     for(const[po,info] of Object.entries(pos)){
       const type=typeOf(info);
-      const sup=(cw&&cw.supplier)||(info.supplier?normSupplier(info.supplier):'')||'UNASSIGNED';
-      const cwEff=cw||{skuBase,supplier:sup};
+      const sup=(info.supplier?normSupplier(info.supplier):'')||(cw&&cw.supplier)||'UNASSIGNED';
+      const cwEff=cw?{...cw,supplier:sup}:{skuBase,supplier:sup};
       const atStatus=`${po} [${stat(info)}]`;
       const cwDiv=cw?cw:null;
       // Flag when the PO exists but there's no menswear colourway behind it (anomaly to check)
@@ -353,7 +353,7 @@ function verifyBuild(bySupplier,cwMap,atData){
   const cpMissing=[];
   for(const cw of Object.values(cwMap)){
     if(skusInWip.has(cw.style)||skusInWip.has(cw.skuBase))continue;
-    if(atData.allPoBases.has(cw.skuBase))continue;                 // has a PO but no live one — legitimately off
+    if(atData.skuPoMap[cw.skuBase])continue;                       // has a live PO -> shown via its PO row
     const p=(cw.productStatus||'').toLowerCase();
     if(p==='approved'||p==='cancelled')continue;                   // legitimately excluded
     let reason=!cw.supplier?'no supplier on colourway':'not built (check)';
@@ -475,8 +475,102 @@ async function writeSupplierWip(supplierName,nrRows,rsRows,removedRows,uPlus,sta
   return wb;
 }
 
+// ═══ PUSH WIP STATUS -> AIRTABLE (Colourway) ═══
+async function _atMeta(method, path, body){
+  const r=await fetch(`https://api.airtable.com/v0/meta/bases/${AT_BASE}${path}`,{method,headers:{'Authorization':`Bearer ${S.apiKey}`,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
+  if(!r.ok)throw new Error(`${r.status}: ${(await r.text()).slice(0,200)}`);
+  return r.json();
+}
+// Make sure a long-text "WIP Status" field exists on the Colourway table. Returns the field name.
+async function ensureWipStatusField(){
+  try{
+    const schema=await _atMeta('GET','/tables');
+    const t=(schema.tables||[]).find(x=>x.id===CW_TABLE);
+    const ex=((t&&t.fields)||[]).find(f=>String(f.name).toLowerCase()==='wip status');
+    if(ex)return ex.name;
+    await _atMeta('POST',`/tables/${CW_TABLE}/fields`,{name:'WIP Status',type:'multilineText'});
+    return 'WIP Status';
+  }catch(e){
+    // No schema permission (or already exists under a different case) — assume the field is there and let the write surface any real error.
+    return 'WIP Status';
+  }
+}
+// Build an exact Style -> recordId map for every colourway (one lightweight field).
+async function fetchStyleIdMap(){
+  const map={};let off=null;
+  do{
+    const url=`https://api.airtable.com/v0/${AT_BASE}/${CW_TABLE}?pageSize=100&returnFieldsByFieldId=true&cellFormat=string&timeZone=Europe%2FLondon&userLocale=en-gb&fields%5B%5D=${CW_F.style}${off?'&offset='+encodeURIComponent(off):''}`;
+    const r=await fetch(url,{headers:{'Authorization':`Bearer ${S.apiKey}`}});
+    if(r.status===429){await new Promise(x=>setTimeout(x,1500));continue;}
+    if(!r.ok)throw new Error(`AT ${r.status}: ${(await r.text()).slice(0,200)}`);
+    const d=await r.json();
+    for(const rec of (d.records||[])){const st=String(getAtVal(rec.fields[CW_F.style])||'').trim();if(st)map[st.toUpperCase()]=rec.id;}
+    off=d.offset||null;
+  }while(off);
+  return map;
+}
+// Read {SKU, STATUS} pairs from a returned WIP file (STATUS column, matched by its header).
+async function readWipStatuses(file){
+  const ab=await file.arrayBuffer();const wb=new ExcelJS.Workbook();await wb.xlsx.load(ab);
+  const ws=wb.worksheets[0];if(!ws)return [];
+  const hdr=ws.getRow(3);let statusC=CI['STATUS'];
+  for(let c=1;c<=ws.columnCount;c++){if(String(hdr.getCell(c).value||'').trim().toUpperCase()==='STATUS'){statusC=c;break;}}
+  const out=[];
+  ws.eachRow((row,ri)=>{
+    if(ri<4)return;
+    const sku=readCellText(row.getCell(3));
+    if(!sku||readCellText(row.getCell(1)).includes('Total:'))return;
+    const status=readCellText(row.getCell(statusC));
+    if(status)out.push({sku,status});
+  });
+  return out;
+}
+async function pushWipStatus(){
+  if(S.wipPush&&S.wipPush.state==='running')return;
+  if(!S.apiKey){toast('Add your Airtable API key in Settings');return;}
+  if(!S.prevWipFiles.length){toast('Upload the returned WIP files above first');return;}
+  S.wipPush={state:'running',log:[],updated:0,unmatched:[]};render();
+  const plog=m=>{S.wipPush.log.push(m);const el=document.getElementById('push-log');if(el){el.innerHTML+=`<p class="log-line">${esc(m)}</p>`;el.scrollTop=el.scrollHeight;}};
+  try{
+    plog('Checking the "WIP Status" field on Colourway…');
+    const fieldName=await ensureWipStatusField();
+    plog('Loading colourway IDs…');
+    const idMap=await fetchStyleIdMap();
+    plog(`  ${Object.keys(idMap).length.toLocaleString()} colourways`);
+    // Gather the latest STATUS per SKU across all uploaded returned WIPs
+    const bySku={};
+    for(const f of S.prevWipFiles){
+      const rows=await readWipStatuses(f.file);
+      for(const {sku,status} of rows)bySku[sku]=status;   // last file wins
+    }
+    const updates=[],unmatched=[];
+    for(const [sku,status] of Object.entries(bySku)){
+      const id=idMap[sku.trim().toUpperCase()];
+      if(id)updates.push({id,fields:{[fieldName]:status}});
+      else unmatched.push(sku);          // flagged, never written to a near-match
+    }
+    plog(`Writing ${updates.length} statuses (${unmatched.length} SKUs not found)…`);
+    for(let i=0;i<updates.length;i+=50){
+      const batch=updates.slice(i,i+50);
+      let ok=false;
+      for(let a=0;a<4;a++){
+        const r=await fetch(`https://api.airtable.com/v0/${AT_BASE}/${CW_TABLE}`,{method:'PATCH',headers:{'Authorization':`Bearer ${S.apiKey}`,'Content-Type':'application/json'},body:JSON.stringify({records:batch})});
+        if(r.status===429&&a<3){await new Promise(x=>setTimeout(x,1500*(a+1)));continue;}
+        if(!r.ok)throw new Error(`write ${r.status}: ${(await r.text()).slice(0,200)}`);
+        ok=true;break;
+      }
+      if(ok)S.wipPush.updated+=batch.length;
+      const pb=document.getElementById('push-pb');if(pb)pb.style.width=Math.round((i+batch.length)/Math.max(1,updates.length)*100)+'%';
+    }
+    S.wipPush.unmatched=unmatched;S.wipPush.state='done';
+    plog(`✓ Done — ${S.wipPush.updated} written to Airtable, ${unmatched.length} SKU(s) not found`);
+    toast(`Pushed ${S.wipPush.updated} statuses to Airtable`);
+  }catch(e){S.wipPush.state='error';plog('ERROR: '+e.message);}
+  render();
+}
+
 // ═══ STATE ═══
-let S={tab:'build',week:String(WEEK),apiKey:localStorage.getItem('mdv-api-key')||'',cpFile:null,cpFileInfo:null,cpStyles:null,cpParsing:false,prevWipFiles:[],tracker:{},history:[],buildState:'idle',buildLog:[],buildResults:[],buildProgress:0,outputFiles:{},atData:null,supplierCheck:null,verification:null,cachedComments:{}};
+let S={tab:'build',week:String(WEEK),apiKey:localStorage.getItem('mdv-api-key')||'',cpFile:null,cpFileInfo:null,cpStyles:null,cpParsing:false,prevWipFiles:[],tracker:{},history:[],buildState:'idle',buildLog:[],buildResults:[],buildProgress:0,outputFiles:{},wipPush:null,atData:null,supplierCheck:null,verification:null,cachedComments:{}};
 function loadStorage(){try{const t=localStorage.getItem(`mdv-tracker-${GENDER}-w${S.week}`);S.tracker=t?JSON.parse(t):{};const h=localStorage.getItem('mdv-history');S.history=h?JSON.parse(h):[];}catch(e){S.tracker={};}}
 function saveTracker(){try{localStorage.setItem(`mdv-tracker-${GENDER}-w${S.week}`,JSON.stringify(S.tracker));}catch(e){}}
 function saveHistory(){try{localStorage.setItem('mdv-history',JSON.stringify(S.history));}catch(e){}}
@@ -636,7 +730,20 @@ function render(){
       </div>`;
     }
     html+=`<div class="drop-zone${S.prevWipFiles.length?' has-files':''}" id="wip-drop"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="1.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><div style="margin-top:8px;font-size:13px;color:#555">Drop last week's WIP files here to load comment history</div><div style="font-size:11px;color:#888;margin-top:4px">WIP_Supplier_Name.xlsx &middot; Each file updates only that supplier's cache</div></div>
-    ${S.prevWipFiles.map((f,i)=>`<div class="file-item"><span class="fi-name">${esc(f.name)}</span><span class="fi-size">${fmtBytes(f.file.size)}</span><span class="fi-rm" onclick="S.prevWipFiles.splice(${i},1);render()">&#10005;</span></div>`).join('')}</div>`;
+    ${S.prevWipFiles.map((f,i)=>`<div class="file-item"><span class="fi-name">${esc(f.name)}</span><span class="fi-size">${fmtBytes(f.file.size)}</span><span class="fi-rm" onclick="S.prevWipFiles.splice(${i},1);render()">&#10005;</span></div>`).join('')}
+      <div style="margin-top:10px;border-top:1px solid #eee;padding-top:10px">
+        <button class="btn" ${(S.prevWipFiles.length&&S.apiKey&&!(S.wipPush&&S.wipPush.state==='running'))?'':'disabled'} onclick="pushWipStatus()">&#x2B06; Push WIP Status &rarr; Airtable</button>
+        <span style="font-size:11px;color:#888;margin-left:8px">Writes each row's STATUS onto its Colourway (matched by SKU). One-way.</span>
+      </div>`;
+    if(S.wipPush){
+      const w=S.wipPush;const c=w.state==='error'?'#C62828':w.state==='done'?'#276221':'#555';
+      html+=`<div class="card" style="border-left:4px solid ${c}">
+        <div class="card-title" style="color:${c}">${w.state==='running'?'Pushing WIP status…':w.state==='error'?'Push failed':`Pushed ${w.updated} status value${w.updated===1?'':'s'} to Airtable`}</div>
+        <div class="progress-wrap"><div class="progress-bar" id="push-pb" style="width:${w.state==='done'?100:0}%"></div></div>
+        <div class="log" id="push-log" style="max-height:160px">${w.log.map(l=>`<p class="log-line">${esc(l)}</p>`).join('')}</div>
+        ${w.unmatched&&w.unmatched.length?`<div style="margin-top:10px;font-size:12px"><strong style="color:#E65100">${w.unmatched.length} SKU(s) not found in Airtable (not written):</strong><div style="background:#fff;border:1px solid #FFB74D;border-radius:6px;padding:8px 12px;margin-top:4px;max-height:120px;overflow:auto">${w.unmatched.map(s=>esc(s)).join(' &middot; ')}</div></div>`:''}
+      </div>`;
+    }
     // Build button
     html+=`<div style="text-align:center;margin-bottom:20px"><button class="btn btn-green" ${canBuild?'':'disabled'} onclick="runBuild()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>${S.buildState==='fetching'?'Fetching Airtable...':S.buildState==='building'?'Building WIPs...':'Build WIP Charts'}</button>${!S.apiKey?'<div style="font-size:12px;color:#e65100;margin-top:8px">Add Airtable API key in Settings</div>':''}</div>`;
     if(S.buildState!=='idle'){html+=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:13px;font-weight:500">Build progress</span><span style="font-size:12px;color:#888">${S.buildProgress}%</span></div><div class="progress-wrap"><div class="progress-bar" id="build-pb" style="width:${S.buildProgress}%"></div></div><div class="log" id="build-log">${S.buildLog.map(l=>`<p class="log-line ${l.type}">${esc(l.msg)}</p>`).join('')}</div></div>`;}
