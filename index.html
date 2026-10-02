@@ -482,18 +482,30 @@ async function _atMeta(method, path, body){
   return r.json();
 }
 // Make sure a long-text "WIP Status" field exists on the Colourway table. Returns the field name.
-async function ensureWipStatusField(){
+const PO_TABLE='tblYDovPFOPwlF4ne';const PO_NUM_FIELD='fld1nmYgJGgvZEp0i';
+async function ensureWipStatusField(tableId){
+  tableId=tableId||CW_TABLE;
   try{
     const schema=await _atMeta('GET','/tables');
-    const t=(schema.tables||[]).find(x=>x.id===CW_TABLE);
+    const t=(schema.tables||[]).find(x=>x.id===tableId);
     const ex=((t&&t.fields)||[]).find(f=>String(f.name).toLowerCase()==='wip status');
     if(ex)return ex.name;
-    await _atMeta('POST',`/tables/${CW_TABLE}/fields`,{name:'WIP Status',type:'multilineText'});
+    await _atMeta('POST',`/tables/${tableId}/fields`,{name:'WIP Status',type:'multilineText'});
     return 'WIP Status';
-  }catch(e){
-    // No schema permission (or already exists under a different case) — assume the field is there and let the write surface any real error.
-    return 'WIP Status';
-  }
+  }catch(e){ return 'WIP Status'; }
+}
+async function fetchPoIdMap(){
+  const map={};let off=null;
+  do{
+    const url=`https://api.airtable.com/v0/${AT_BASE}/${PO_TABLE}?pageSize=100&returnFieldsByFieldId=true&cellFormat=string&timeZone=Europe%2FLondon&userLocale=en-gb&fields%5B%5D=${PO_NUM_FIELD}${off?'&offset='+encodeURIComponent(off):''}`;
+    const r=await fetch(url,{headers:{'Authorization':`Bearer ${S.apiKey}`}});
+    if(r.status===429){await new Promise(x=>setTimeout(x,1500));continue;}
+    if(!r.ok)throw new Error(`AT ${r.status}: ${(await r.text()).slice(0,200)}`);
+    const d=await r.json();
+    for(const rec of (d.records||[])){const p=canonPo(getAtVal(rec.fields[PO_NUM_FIELD]));if(p&&!map[p])map[p]=rec.id;}
+    off=d.offset||null;
+  }while(off);
+  return map;
 }
 // Build an exact Style -> recordId map for every colourway (one lightweight field).
 async function fetchStyleIdMap(){
@@ -515,13 +527,18 @@ async function readWipStatuses(file){
   const ws=wb.worksheets[0];if(!ws)return [];
   const hdr=ws.getRow(3);let statusC=CI['STATUS'];
   for(let c=1;c<=ws.columnCount;c++){if(String(hdr.getCell(c).value||'').trim().toUpperCase()==='STATUS'){statusC=c;break;}}
+  const atC=CI['AIRTABLE POs & STATUS']||11, cpC=CI['PO NUMBER (CP)']||10;
   const out=[];
   ws.eachRow((row,ri)=>{
     if(ri<4)return;
     const sku=readCellText(row.getCell(3));
     if(!sku||readCellText(row.getCell(1)).includes('Total:'))return;
     const status=readCellText(row.getCell(statusC));
-    if(status)out.push({sku,status});
+    if(!status)return;
+    let po='';const at=readCellText(row.getCell(atC)),cp=readCellText(row.getCell(cpC));
+    const m=(at||'').match(/PO-?\d+/i)||(cp||'').match(/PO-?\d+/i);
+    if(m)po=canonPo(m[0]);
+    out.push({sku,status,po});
   });
   return out;
 }
@@ -529,42 +546,38 @@ async function pushWipStatus(){
   if(S.wipPush&&S.wipPush.state==='running')return;
   if(!S.apiKey){toast('Add your Airtable API key in Settings');return;}
   if(!S.prevWipFiles.length){toast('Upload the returned WIP files above first');return;}
-  S.wipPush={state:'running',log:[],updated:0,unmatched:[]};render();
+  S.wipPush={state:'running',log:[],cwUpdated:0,poUpdated:0,unmatchedSku:[],unmatchedPo:[]};render();
   const plog=m=>{S.wipPush.log.push(m);const el=document.getElementById('push-log');if(el){el.innerHTML+=`<p class="log-line">${esc(m)}</p>`;el.scrollTop=el.scrollHeight;}};
+  const writeBatches=async(table,updates)=>{let done=0;for(let i=0;i<updates.length;i+=25){const batch=updates.slice(i,i+25);for(let a=0;a<4;a++){const r=await fetch(`https://api.airtable.com/v0/${AT_BASE}/${table}`,{method:'PATCH',headers:{'Authorization':`Bearer ${S.apiKey}`,'Content-Type':'application/json'},body:JSON.stringify({records:batch})});if(r.status===429&&a<3){await new Promise(x=>setTimeout(x,1500*(a+1)));continue;}if(!r.ok)throw new Error(`write ${r.status}: ${(await r.text()).slice(0,200)}`);break;}done+=batch.length;const pb=document.getElementById('push-pb');if(pb)pb.style.width=Math.round(done/Math.max(1,updates.length)*100)+'%';}return done;};
   try{
-    plog('Checking the "WIP Status" field on Colourway…');
-    const fieldName=await ensureWipStatusField();
-    plog('Loading colourway IDs…');
-    const idMap=await fetchStyleIdMap();
-    plog(`  ${Object.keys(idMap).length.toLocaleString()} colourways`);
-    // Gather the latest STATUS per SKU across all uploaded returned WIPs
-    const bySku={};
+    plog('Checking the "WIP Status" fields…');
+    const cwField=await ensureWipStatusField(CW_TABLE);
+    const poField=await ensureWipStatusField(PO_TABLE);
+    plog('Loading colourway + PO headers…');
+    const [idMap,poMap]=await Promise.all([fetchStyleIdMap(),fetchPoIdMap()]);
+    plog(`  ${Object.keys(idMap).length.toLocaleString()} colourways, ${Object.keys(poMap).length.toLocaleString()} PO headers`);
+    // latest status per SKU and per PO across all uploaded returned WIPs
+    const bySku={},byPo={};
     for(const f of S.prevWipFiles){
       const rows=await readWipStatuses(f.file);
-      for(const {sku,status} of rows)bySku[sku]=status;   // last file wins
+      for(const {sku,status,po} of rows){ bySku[sku]=status; if(po)byPo[po]=status; }
     }
-    const updates=[],unmatched=[];
+    const cwUpdates=[],poUpdates=[],unmatchedSku=[],unmatchedPo=[];
     for(const [sku,status] of Object.entries(bySku)){
       const id=idMap[sku.trim().toUpperCase()];
-      if(id)updates.push({id,fields:{[fieldName]:status}});
-      else unmatched.push(sku);          // flagged, never written to a near-match
+      if(id)cwUpdates.push({id,fields:{[cwField]:status}}); else unmatchedSku.push(sku);
     }
-    plog(`Writing ${updates.length} statuses (${unmatched.length} SKUs not found)…`);
-    for(let i=0;i<updates.length;i+=25){
-      const batch=updates.slice(i,i+25);
-      let ok=false;
-      for(let a=0;a<4;a++){
-        const r=await fetch(`https://api.airtable.com/v0/${AT_BASE}/${CW_TABLE}`,{method:'PATCH',headers:{'Authorization':`Bearer ${S.apiKey}`,'Content-Type':'application/json'},body:JSON.stringify({records:batch})});
-        if(r.status===429&&a<3){await new Promise(x=>setTimeout(x,1500*(a+1)));continue;}
-        if(!r.ok)throw new Error(`write ${r.status}: ${(await r.text()).slice(0,200)}`);
-        ok=true;break;
-      }
-      if(ok)S.wipPush.updated+=batch.length;
-      const pb=document.getElementById('push-pb');if(pb)pb.style.width=Math.round((i+batch.length)/Math.max(1,updates.length)*100)+'%';
+    for(const [po,status] of Object.entries(byPo)){
+      const id=poMap[po];
+      if(id)poUpdates.push({id,fields:{[poField]:status}}); else unmatchedPo.push(po);
     }
-    S.wipPush.unmatched=unmatched;S.wipPush.state='done';
-    plog(`✓ Done — ${S.wipPush.updated} written to Airtable, ${unmatched.length} SKU(s) not found`);
-    toast(`Pushed ${S.wipPush.updated} statuses to Airtable`);
+    plog(`Writing ${cwUpdates.length} colourways…`);
+    S.wipPush.cwUpdated=await writeBatches(CW_TABLE,cwUpdates);
+    plog(`Writing ${poUpdates.length} PO headers…`);
+    S.wipPush.poUpdated=await writeBatches(PO_TABLE,poUpdates);
+    S.wipPush.unmatchedSku=unmatchedSku;S.wipPush.unmatchedPo=unmatchedPo;S.wipPush.state='done';
+    plog(`\u2713 Done \u2014 ${S.wipPush.cwUpdated} colourways, ${S.wipPush.poUpdated} PO headers. Not found: ${unmatchedSku.length} SKU, ${unmatchedPo.length} PO.`);
+    toast(`Pushed ${S.wipPush.cwUpdated} colourways + ${S.wipPush.poUpdated} POs`);
   }catch(e){S.wipPush.state='error';plog('ERROR: '+e.message);}
   render();
 }
@@ -737,11 +750,12 @@ function render(){
       </div>`;
     if(S.wipPush){
       const w=S.wipPush;const c=w.state==='error'?'#C62828':w.state==='done'?'#276221':'#555';
+      const miss=(label,arr)=>arr&&arr.length?`<div style="margin-top:10px;font-size:12px"><strong style="color:#E65100">${arr.length} ${label} not found (not written):</strong><div style="background:#fff;border:1px solid #FFB74D;border-radius:6px;padding:8px 12px;margin-top:4px;max-height:110px;overflow:auto">${arr.map(s=>esc(s)).join(' &middot; ')}</div></div>`:'';
       html+=`<div class="card" style="border-left:4px solid ${c}">
-        <div class="card-title" style="color:${c}">${w.state==='running'?'Pushing WIP status…':w.state==='error'?'Push failed':`Pushed ${w.updated} status value${w.updated===1?'':'s'} to Airtable`}</div>
+        <div class="card-title" style="color:${c}">${w.state==='running'?'Pushing WIP status…':w.state==='error'?'Push failed':`Pushed ${w.cwUpdated} colourway${w.cwUpdated===1?'':'s'} + ${w.poUpdated} PO header${w.poUpdated===1?'':'s'}`}</div>
         <div class="progress-wrap"><div class="progress-bar" id="push-pb" style="width:${w.state==='done'?100:0}%"></div></div>
         <div class="log" id="push-log" style="max-height:160px">${w.log.map(l=>`<p class="log-line">${esc(l)}</p>`).join('')}</div>
-        ${w.unmatched&&w.unmatched.length?`<div style="margin-top:10px;font-size:12px"><strong style="color:#E65100">${w.unmatched.length} SKU(s) not found in Airtable (not written):</strong><div style="background:#fff;border:1px solid #FFB74D;border-radius:6px;padding:8px 12px;margin-top:4px;max-height:120px;overflow:auto">${w.unmatched.map(s=>esc(s)).join(' &middot; ')}</div></div>`:''}
+        ${miss('SKU(s)',w.unmatchedSku)}${miss('PO(s)',w.unmatchedPo)}
       </div>`;
     }
     // Build button
