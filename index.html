@@ -550,8 +550,8 @@ async function pushWipStatus(){
       else unmatched.push(sku);          // flagged, never written to a near-match
     }
     plog(`Writing ${updates.length} statuses (${unmatched.length} SKUs not found)…`);
-    for(let i=0;i<updates.length;i+=50){
-      const batch=updates.slice(i,i+50);
+    for(let i=0;i<updates.length;i+=25){
+      const batch=updates.slice(i,i+25);
       let ok=false;
       for(let a=0;a<4;a++){
         const r=await fetch(`https://api.airtable.com/v0/${AT_BASE}/${CW_TABLE}`,{method:'PATCH',headers:{'Authorization':`Bearer ${S.apiKey}`,'Content-Type':'application/json'},body:JSON.stringify({records:batch})});
