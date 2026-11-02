@@ -352,6 +352,7 @@ function verifyBuild(bySupplier,cwMap,atData){
   for(const bucket of Object.values(bySupplier)){for(const r of[...(bucket.nr||[]),...(bucket.rs||[]),...(bucket.removed||[])]){if(r.sku)skusInWip.add(r.sku);if(r.skuBase)skusInWip.add(r.skuBase);if(r.atPo&&r.skuBase)skuPosInWip.add(`${r.skuBase}||${r.atPo}`);}}
   const cpMissing=[];
   for(const cw of Object.values(cwMap)){
+    if(((cw.division||'').toLowerCase())==='womenswear')continue;    // other division -> not this WIP's concern
     if(skusInWip.has(cw.style)||skusInWip.has(cw.skuBase))continue;
     if(atData.skuPoMap[cw.skuBase])continue;                       // has a live PO -> shown via its PO row
     const p=(cw.productStatus||'').toLowerCase();
@@ -360,7 +361,7 @@ function verifyBuild(bySupplier,cwMap,atData){
     cpMissing.push({sku:cw.style,supplier:cw.supplier||'',name:cw.name||'',tab:cw.division||'',po:'',reason});
   }
   const atMissing=[];
-  for(const[skuBase,pos] of Object.entries(atData.skuPoMap||{})){for(const[po,info] of Object.entries(pos)){if(skuPosInWip.has(`${skuBase}||${po}`))continue;atMissing.push({skuBase,po,supplier:info.supplier||'',product:info.product_title||'',line_status:info.line_status||'',po_status:info.po_status||''});}}
+  for(const[skuBase,pos] of Object.entries(atData.skuPoMap||{})){const _cw=cwMap[skuBase];if(_cw&&((_cw.division||'').toLowerCase())==='womenswear')continue;for(const[po,info] of Object.entries(pos)){if(skuPosInWip.has(`${skuBase}||${po}`))continue;atMissing.push({skuBase,po,supplier:info.supplier||'',product:info.product_title||'',line_status:info.line_status||'',po_status:info.po_status||''});}}
   cpMissing.sort((a,b)=>(a.supplier||'').localeCompare(b.supplier||'')||a.sku.localeCompare(b.sku));
   atMissing.sort((a,b)=>(a.supplier||'').localeCompare(b.supplier||'')||a.po.localeCompare(b.po));
   return{cpMissing,atMissing};
