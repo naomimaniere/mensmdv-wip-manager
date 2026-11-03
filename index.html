@@ -175,7 +175,7 @@ async function fetchAtData(onProgress){
     const ls=String(getAtVal(c['fldRkRlWGV612tmnd'])||'').trim().toUpperCase();
     const sr=String(getAtVal(c['fldPmxdxfFGo2gLzz'])||'').trim();
     const hasBooking=!!(sr&&sr!=='nan');
-    const _DONE=new Set(['CANCELLED','DELIVERED','ARRIVED']);if(hasBooking||_DONE.has(ps)||_DONE.has(ls))continue;   // excluded: booked, or cancelled
+    const _DONE=new Set(['CANCELLED','DELIVERED','ARRIVED','SHIPPED UNDER OTHER PO']);   // done by status alone. SHIPPED / FULLY SHIPPED are done ONLY via a booking reference (hasBooking). A PO stays if ANY line is not done.if(hasBooking||_DONE.has(ps)||_DONE.has(ls))continue;   // excluded: booked, or cancelled
     if(!skuPoMap[skuBase])skuPoMap[skuBase]={};
     if(!skuPoMap[skuBase][po])skuPoMap[skuBase][po]={line_status:'',po_status:'',po_type:'',po_sent_date:'',bulk_spec_approval:'',bulk_fabric_approval:'',qc_date:'',approved_handover_date:'',supplier:'',release:'',product_title:'',colour:'',cost:''};
     const d=skuPoMap[skuBase][po];
@@ -329,6 +329,7 @@ function buildAllWipRows(cwMap,atData){
   for(const[skuBase,pos] of Object.entries(atData.skuPoMap)){
     const cw=cwMap[skuBase]||null;
     if(_isW(cw))continue;                                          // womenswear colourway -> its POs are not menswear
+    if(!cw&&/^WMN/i.test(skuBase))continue;                        // orphan PO, no colourway -> use SKU prefix: WMN is not menswear
     for(const[po,info] of Object.entries(pos)){
       const type=typeOf(info);
       const sup=(info.supplier?normSupplier(info.supplier):'')||(cw&&cw.supplier)||'UNASSIGNED';
