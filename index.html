@@ -77,7 +77,7 @@ const FIXED_COLS=[
   {ci:1,h:'TYPE',w:14,t:'sys'},{ci:2,h:'RELEASE',w:28,t:'sys'},{ci:3,h:'SKU',w:16,t:'sys'},
   {ci:4,h:'PRODUCT NAME',w:34,t:'sys'},{ci:5,h:'COLOUR',w:14,t:'sys'},{ci:6,h:'MBF FABRIC CODE',w:18,t:'sys'},
   {ci:7,h:'COST ($)',w:10,t:'sys'},{ci:8,h:'TIERED PRICING',w:14,t:'static'},{ci:9,h:'COST APPROVED?',w:13,t:'sys'},
-  {ci:10,h:'PO NUMBER (CP)',w:15,t:'sys'},{ci:11,h:'AIRTABLE POs & STATUS',w:34,t:'sys'},{ci:12,h:'TP SEND DATE',w:13,t:'sys'},
+  {ci:10,h:'PO NUMBER',w:15,t:'sys'},{ci:11,h:'AIRTABLE POs & STATUS',w:34,t:'sys'},{ci:12,h:'TP SEND DATE',w:13,t:'sys'},
   {ci:13,h:'1ST SAMPLE FABRIC / COLOUR',w:20,t:'static'},{ci:14,h:'1ST SAMPLE SENT DATE',w:15,t:'static'},
   {ci:15,h:'1ST SAMPLE COMMENTS SENT DATE',w:20,t:'sys'},
   {ci:16,h:'2ND SAMPLE FABRIC / COLOUR',w:20,t:'static'},{ci:17,h:'2ND SAMPLE SENT DATE',w:15,t:'static'},
@@ -245,7 +245,7 @@ async function readPrevWip(file){
     console.log('[WIP] Comment headers:',headers.slice(0,5),'...');
     const skuC=colByHdr['SKU']||CI['SKU'];
     const atC=colByHdr['AIRTABLE POs & STATUS']||CI['AIRTABLE POs & STATUS'];
-    const cpPoC=colByHdr['PO NUMBER (CP)']||CI['PO NUMBER (CP)'];
+    const cpPoC=colByHdr['PO NUMBER']||colByHdr['PO NUMBER (CP)']||CI['PO NUMBER'];   // returned files may still carry the old header
     const colourC=colByHdr['COLOUR']||CI['COLOUR'];
     console.log('[WIP] Key cols: SKU=',skuC,'AT=',atC,'CPPO=',cpPoC,'COLOUR=',colourC);
     const data={};const staticData={};const meta={};let rowCount=0;const occ={};
@@ -330,7 +330,7 @@ function buildAllWipRows(cwMap,atData){
   const ensureSup=sup=>{if(!bySupplier[sup])bySupplier[sup]={nr:[],rs:[],removed:[]};return bySupplier[sup];};
   const stat=info=>info.line_status||info.po_status||'PO SENT';
   const typeOf=info=>{const t=(info.po_type||'').toLowerCase();if(t.includes('repeat'))return'RESTOCK';if(t.includes('mix'))return'MIX';return'NEW RELEASE';};
-  const costApp=cw=>{const s=((cw&&cw.costStatus)||'').toLowerCase();if(!s)return'';if(s.includes('approv'))return'YES';if(s.includes('revision')||s.includes('reject'))return'NO';return'';};
+  const costApp=cw=>{const s=((cw&&cw.costStatus)||'').trim();if(!s)return'';if(s==='Approved')return'YES';if(s==='Not Approved')return'NO';if(s==='Can be approved - in negotiation')return'IN NEGOTIATION';if(s==='Flagged')return'FLAGGED';return s.toUpperCase();};   // Approved->YES, Not Approved->NO, In negotiation / Flagged shown as-is, blank->blank, any new value shown verbatim
   const mkRow=(type,cw,info,po,atStatus,amber)=>({type,isRestock:false,sku:(cw&&cw.style)||(cw&&cw.skuBase)||'',skuBase:(cw&&cw.skuBase)||'',supplier:(cw&&cw.supplier)||'',po:po||'',atPo:po||'',name:(cw&&cw.name)||(info&&info.product_title)||'',colour:(cw&&cw.colour)||(info&&info.colour)||'',mbf:(cw&&cw.mbf)||'',stage:(cw&&cw.stage)||'',shoot:(cw&&cw.shoot)||'',tp:(cw&&cw.tp)||'',cost:(info&&info.cost)||'',costApproved:costApp(cw),csd1:'',csd2:'',csd3:'',csdpp:'',tier:(cw&&cw.tier)||'',release:(info&&info.release)||(cw&&cw.rmonth)||'',tab:'',atStatus:atStatus||'',atStatusType:amber?'amber':'normal',poSent:(info&&info.po_sent_date)||'',bulkSpec:(info&&info.bulk_spec_approval)||'',bulkFab:(info&&info.bulk_fabric_approval)||'',qcDate:(info&&info.qc_date)||'',handover:(info&&info.approved_handover_date)||''});
   const _excl=cw=>((cw&&cw.division)||'').toLowerCase()==='womenswear';        // the other division -> never on this WIP
   const isDev=cw=>{const p=(cw.productStatus||'').toLowerCase();return p!=='approved'&&p!=='cancelled';};
@@ -367,7 +367,7 @@ function buildAllWipRows(cwMap,atData){
       const atStatus=`${po} [${stat(info)}]`;
       const amber=!cw;                                            // live PO with no colourway behind it -> flag
       if(type==='RESTOCK'){
-        ensureSup(sup).rs.push({type:'RESTOCK',isRestock:true,sku:skuBase,skuBase,supplier:sup,po:'',atPo:po,name:(cw&&cw.name)||info.product_title||'',colour:(cw&&cw.colour)||info.colour||'',mbf:'',stage:'',shoot:'',tp:'',cost:info.cost||'',costApproved:'',csd1:'',csd2:'',csd3:'',csdpp:'',tier:(cw&&cw.tier)||'',release:info.release||(cw&&cw.rmonth)||'',tab:'',atStatus:amber?atStatus+'  ⚠ no colourway':atStatus,atStatusType:amber?'amber':'normal',poSent:info.po_sent_date||'',bulkSpec:info.bulk_spec_approval||'',bulkFab:info.bulk_fabric_approval||'',qcDate:info.qc_date||'',handover:info.approved_handover_date||''});
+        ensureSup(sup).rs.push({type:'RESTOCK',isRestock:true,sku:skuBase,skuBase,supplier:sup,po:'',atPo:po,name:(cw&&cw.name)||info.product_title||'',colour:(cw&&cw.colour)||info.colour||'',mbf:'',stage:'',shoot:'',tp:'',cost:info.cost||'',costApproved:costApp(cw),csd1:'',csd2:'',csd3:'',csdpp:'',tier:(cw&&cw.tier)||'',release:info.release||(cw&&cw.rmonth)||'',tab:'',atStatus:amber?atStatus+'  ⚠ no colourway':atStatus,atStatusType:amber?'amber':'normal',poSent:info.po_sent_date||'',bulkSpec:info.bulk_spec_approval||'',bulkFab:info.bulk_fabric_approval||'',qcDate:info.qc_date||'',handover:info.approved_handover_date||''});
       }else{
         ensureSup(sup).nr.push(mkRow(type,cwEff,info,po,amber?atStatus+'  ⚠ no colourway':atStatus,amber));
       }
@@ -434,7 +434,7 @@ async function writeSupplierWip(supplierName,nrRows,rsRows,removedRows,uPlus,sta
   ws.mergeCells(1,1,1,totalCols);const r1=ws.getRow(1);r1.height=30;
   const c1=r1.getCell(1);c1.value=`WIP CHART  —  ${supplierName.toUpperCase()}`;c1.fill=af(DARK);c1.font={bold:true,color:{argb:WHITE},size:13,name:'Arial'};c1.alignment={horizontal:'center',vertical:'middle',wrapText:true};
   ws.mergeCells(2,1,2,totalCols);const r2=ws.getRow(2);r2.height=15;
-  const c2=r2.getCell(1);c2.value='🟢 Cost approved  🔴 Not approved  ⚠ Amber=no AT POs  🟣 Restock  🔴 RED=REVIEW  ║ Dark=system  Blue=supplier fills  T+=comment history';c2.fill=af('FF2D2D4E');c2.font={color:{argb:'FFBBBBBB'},size:8,name:'Arial'};c2.alignment={horizontal:'center',vertical:'middle',wrapText:true};
+  const c2=r2.getCell(1);c2.value='🟢 Cost approved  🔴 Not approved  ⚠ Amber = cost in negotiation/flagged, or PO with no colourway  🟣 Restock  🔴 RED=REVIEW  ║ Dark=system  Blue=supplier fills  T+=comment history';c2.fill=af('FF2D2D4E');c2.font={color:{argb:'FFBBBBBB'},size:8,name:'Arial'};c2.alignment={horizontal:'center',vertical:'middle',wrapText:true};
   const r3=ws.getRow(3);r3.height=50;
   for(const fc of FIXED_COLS){const cell=r3.getCell(fc.ci);cell.value=fc.h;const hs=hdrStyle(fc.ci);cell.fill=af(hs.f);cell.font={bold:true,color:{argb:hs.t},size:9,name:'Arial'};cell.alignment={horizontal:'center',vertical:'middle',wrapText:true};cell.border=tkb();}
   for(let i=0;i<nU;i++){const h=(uPlus.headers[i]||'');const cell=r3.getCell(N_FIXED+1+i);cell.value=h;cell.fill=af(uHdrFill(h));cell.font={bold:true,color:{argb:WHITE},size:9,name:'Arial'};cell.alignment={horizontal:'center',vertical:'middle',wrapText:true};cell.border=tkb();}
@@ -455,7 +455,7 @@ async function writeSupplierWip(supplierName,nrRows,rsRows,removedRows,uPlus,sta
       const rf=af(REMOVED_F);const rfont={bold:true,color:{argb:'FFCC0000'},size:9,name:'Arial'};
       for(const fc of FIXED_COLS){const cell=wsr.getCell(fc.ci);cell.fill=rf;cell.border=tb();cell.font=rfont;cell.alignment={horizontal:'left',vertical:'top',wrapText:true};}
       wsr.getCell(1).value='REVIEW: '+(row.removeReason||'AUTO-REMOVED');wsr.getCell(1).alignment={horizontal:'center',vertical:'middle',wrapText:true};
-      wsr.getCell(CI['RELEASE']).value=row.release||'';wsr.getCell(CI['SKU']).value=sku;wsr.getCell(CI['PRODUCT NAME']).value=row.name||'';wsr.getCell(CI['COLOUR']).value=row.colour||'';wsr.getCell(CI['PO NUMBER (CP)']).value=row.po||'';wsr.getCell(CI['AIRTABLE POs & STATUS']).value=row.atStatus||'';wsr.getCell(CI['PO SENT DATE']).value=row.poSent||'';wsr.getCell(CI['BULK SPEC APPROVAL']).value=row.bulkSpec||'';wsr.getCell(CI['BULK FABRIC APPROVAL']).value=row.bulkFab||'';wsr.getCell(CI['QC DATE']).value=row.qcDate||'';wsr.getCell(CI['APPROVED HANDOVER DATE']).value=row.handover||'';
+      wsr.getCell(CI['RELEASE']).value=row.release||'';wsr.getCell(CI['SKU']).value=sku;wsr.getCell(CI['PRODUCT NAME']).value=row.name||'';wsr.getCell(CI['COLOUR']).value=row.colour||'';wsr.getCell(CI['PO NUMBER']).value=row.po||'';wsr.getCell(CI['AIRTABLE POs & STATUS']).value=row.atStatus||'';wsr.getCell(CI['PO SENT DATE']).value=row.poSent||'';wsr.getCell(CI['BULK SPEC APPROVAL']).value=row.bulkSpec||'';wsr.getCell(CI['BULK FABRIC APPROVAL']).value=row.bulkFab||'';wsr.getCell(CI['QC DATE']).value=row.qcDate||'';wsr.getCell(CI['APPROVED HANDOVER DATE']).value=row.handover||'';
       for(const fc of FIXED_COLS){if(fc.t==='static'&&prevStatic[fc.h]){wsr.getCell(fc.ci).value=prevStatic[fc.h];wsr.getCell(fc.ci).fill=rf;}}
       const uCells=_uCells;
       for(let j=0;j<nU;j++){const ci=N_FIXED+1+j;const uc=uCells[j];const cell=wsr.getCell(ci);if(uc){cell.value=uc.value;if(uc.fillArgb&&uc.fillArgb.length>=6)cell.fill=af(uc.fillArgb.length===6?'FF'+uc.fillArgb:uc.fillArgb);const fa=uc.fontArgb&&uc.fontArgb.length>=6?(uc.fontArgb.length===6?'FF'+uc.fontArgb:uc.fontArgb):'FF111111';cell.font={color:{argb:fa},bold:uc.bold||false,size:9,name:'Arial'};}cell.alignment={horizontal:'left',vertical:'top',wrapText:true};cell.border=tb();}
@@ -466,10 +466,8 @@ async function writeSupplierWip(supplierName,nrRows,rsRows,removedRows,uPlus,sta
     wc(CI['TYPE'],isRS?'RESTOCK':'NEW RELEASE',isRS?af(PURPLE_F):baseFill,{bold:true,color:{argb:isRS?PURPLE_T:'FF1E40AF'},size:9,name:'Arial'},{horizontal:'center',vertical:'middle',wrapText:true});
     wc(CI['RELEASE'],row.release,null,null,{horizontal:'left',vertical:'middle',wrapText:true});wc(CI['SKU'],sku);wc(CI['PRODUCT NAME'],row.name);wc(CI['COLOUR'],row.colour,null,null,{horizontal:'left',vertical:'middle',wrapText:true});wc(CI['MBF FABRIC CODE'],isRS?null:row.mbf,null,null,{horizontal:'left',vertical:'middle',wrapText:true});wc(CI['COST ($)'],row.cost,null,null,{horizontal:'left',vertical:'middle',wrapText:true});
     wStatic(CI['TIERED PRICING'],'TIERED PRICING');
-    if(row.costApproved==='YES')wc(CI['COST APPROVED?'],'YES',af(GREEN_F),{bold:true,color:{argb:GREEN_T},size:9,name:'Arial'},{horizontal:'center',vertical:'middle',wrapText:true});
-    else if(row.costApproved==='NO')wc(CI['COST APPROVED?'],'NO',af('FFFCE4EC'),{bold:true,color:{argb:RED_T},size:9,name:'Arial'},{horizontal:'center',vertical:'middle',wrapText:true});
-    else wc(CI['COST APPROVED?'],null,null,null,{horizontal:'center',vertical:'middle'});
-    wc(CI['PO NUMBER (CP)'],isRS?null:(row.po||null),null,null,{horizontal:'left',vertical:'middle',wrapText:true});
+    if(row.costApproved==='YES')wc(CI['COST APPROVED?'],'YES',af(GREEN_F),{bold:true,color:{argb:GREEN_T},size:9,name:'Arial'},{horizontal:'center',vertical:'middle',wrapText:true});else if(row.costApproved==='NO')wc(CI['COST APPROVED?'],'NO',af('FFFCE4EC'),{bold:true,color:{argb:RED_T},size:9,name:'Arial'},{horizontal:'center',vertical:'middle',wrapText:true});else if(row.costApproved)wc(CI['COST APPROVED?'],row.costApproved,af(AMBER_F),{bold:true,color:{argb:AMBER_T},size:9,name:'Arial'},{horizontal:'center',vertical:'middle',wrapText:true});else wc(CI['COST APPROVED?'],null,null,null,{horizontal:'center',vertical:'middle'});
+    wc(CI['PO NUMBER'],isRS?null:(row.po||null),null,null,{horizontal:'left',vertical:'middle',wrapText:true});
     const atAmber=row.atStatusType==='amber';wc(CI['AIRTABLE POs & STATUS'],row.atStatus||null,atAmber?af(AMBER_F):baseFill,atAmber?{color:{argb:AMBER_T},size:9,name:'Arial'}:null,{horizontal:'left',vertical:'top',wrapText:true});
     wc(CI['TP SEND DATE'],isRS?null:(row.tp||null),null,null,{horizontal:'left',vertical:'middle',wrapText:true});
     const _sampLo=CI['1ST SAMPLE FABRIC / COLOUR'],_sampHi=CI['SHOOT SAMPLE COMMENTS SENT DATE'];
@@ -564,7 +562,7 @@ async function readWipStatuses(file){
   const ws=wb.worksheets[0];if(!ws)return [];
   const hdr=ws.getRow(3);let statusC=CI['STATUS'];
   for(let c=1;c<=ws.columnCount;c++){if(String(hdr.getCell(c).value||'').trim().toUpperCase()==='STATUS'){statusC=c;break;}}
-  const atC=CI['AIRTABLE POs & STATUS']||11, cpC=CI['PO NUMBER (CP)']||10;
+  const atC=CI['AIRTABLE POs & STATUS']||11, cpC=CI['PO NUMBER']||10;
   const out=[];
   ws.eachRow((row,ri)=>{
     if(ri<4)return;
@@ -721,8 +719,8 @@ async function runBuild(){
     S.buildResults=results;
     log('Verifying...');S.verification=verifyBuild(bySupplier,S.cwMap,S.atData);
     const{cpMissing,atMissing}=S.verification;
-    if(!cpMissing.length&&!atMissing.length)log('  All CP styles and AT POs accounted for','ok');
-    else log(`  ${cpMissing.length} CP + ${atMissing.length} AT items not in any WIP`,'warn');
+    if(!cpMissing.length&&!atMissing.length)log('  All development colourways and live POs accounted for','ok');
+    else log(`  ${cpMissing.length} development colourways + ${atMissing.length} live POs not in any WIP`,'warn');
     setProgress(100);log(`Build complete — ${sups.length} files`,'ok');S.buildState='done';
     const a=document.createElement('a');a.href=S.outputFiles['__ZIP__'];a.download=`MDV_Menswear_WIP_W${S.week}.zip`;a.click();
   }catch(e){log(`Error: ${e.message}`,'err');console.error(e);S.buildState='idle';}
@@ -798,8 +796,8 @@ function render(){
     // Build button
     html+=`<div style="text-align:center;margin-bottom:20px"><button class="btn btn-green" ${canBuild?'':'disabled'} onclick="runBuild()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>${S.buildState==='fetching'?'Fetching Airtable...':S.buildState==='building'?'Building WIPs...':'Build WIP Charts'}</button>${!S.apiKey?'<div style="font-size:12px;color:#e65100;margin-top:8px">Add Airtable API key in Settings</div>':''}</div>`;
     if(S.buildState!=='idle'){html+=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:13px;font-weight:500">Build progress</span><span style="font-size:12px;color:#888">${S.buildProgress}%</span></div><div class="progress-wrap"><div class="progress-bar" id="build-pb" style="width:${S.buildProgress}%"></div></div><div class="log" id="build-log">${S.buildLog.map(l=>`<p class="log-line ${l.type}">${esc(l.msg)}</p>`).join('')}</div></div>`;}
-    if(S.buildState==='done'&&S.supplierCheck){const sc=S.supplierCheck,hasIss=sc.cpOnly.length||sc.atOnly.length;html+=`<div class="card" style="border-left:4px solid ${hasIss?'#E65100':'#276221'};background:${hasIss?'#FFF8E7':'#F1F8E9'}"><div class="card-title" style="color:${hasIss?'#E65100':'#276221'}">${hasIss?'&#9888;':'&#10003;'} Supplier check — ${hasIss?`${sc.cpOnly.length+sc.atOnly.length} issues`:`All ${sc.matchedCount} match`}</div>${sc.cpOnly.length?`<div style="font-size:12px;margin-bottom:6px"><strong>In CP only:</strong> ${sc.cpOnly.map(s=>esc(s)).join(' &middot; ')}</div>`:''} ${sc.atOnly.length?`<div style="font-size:12px"><strong>In AT only:</strong> ${sc.atOnly.map(s=>esc(s)).join(' &middot; ')}</div>`:''}</div>`;}
-    if(S.buildState==='done'&&S.verification){const vf=S.verification,tot=vf.cpMissing.length+vf.atMissing.length;html+=`<div class="card" style="border-left:4px solid ${tot?'#C62828':'#276221'};background:${tot?'#FFEBEE':'#F1F8E9'}"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div class="card-title" style="color:${tot?'#C62828':'#276221'};margin:0">${tot?'&#9888;':'&#10003;'} Verification — ${tot?`${tot} items not in any WIP`:'Every CP style and AT PO is in a WIP'}</div>${tot?`<button class="btn btn-dark" style="padding:6px 12px;font-size:12px" onclick="downloadVerifCsv()">CSV</button>`:''}</div>${vf.cpMissing.length?`<div style="font-size:12px;font-weight:500;color:#C62828;margin-bottom:6px">CP styles missing (${vf.cpMissing.length})</div><div style="background:#fff;border:1px solid #ef9a9a;border-radius:6px;overflow:hidden;margin-bottom:12px"><table class="tbl" style="margin:0"><thead><tr><th>SKU</th><th>Supplier</th><th>Tab</th><th>Reason</th></tr></thead><tbody>${vf.cpMissing.slice(0,20).map((r,i)=>`<tr class="${i%2?'row-even':''}"><td>${esc(r.sku)}</td><td>${esc(r.supplier)}</td><td style="font-size:11px">${esc(r.tab)}</td><td style="font-size:11px;color:#C62828">${esc(r.reason)}</td></tr>`).join('')}</tbody></table></div>`:''}${vf.atMissing.length?`<div style="font-size:12px;font-weight:500;color:#C62828;margin-bottom:6px">AT POs missing (${vf.atMissing.length})</div><div style="background:#fff;border:1px solid #ef9a9a;border-radius:6px;overflow:hidden"><table class="tbl" style="margin:0"><thead><tr><th>SKU Base</th><th>PO</th><th>Supplier</th><th>Status</th></tr></thead><tbody>${vf.atMissing.slice(0,20).map((r,i)=>`<tr class="${i%2?'row-even':''}"><td>${esc(r.skuBase)}</td><td>${esc(r.po)}</td><td>${esc(r.supplier)}</td><td style="font-size:11px">${esc(r.line_status||r.po_status)}</td></tr>`).join('')}</tbody></table></div>`:''}    </div>`;}
+    /* supplier check removed: CP vs Airtable name comparison no longer applies */
+    if(S.buildState==='done'&&S.verification){const vf=S.verification,tot=vf.cpMissing.length+vf.atMissing.length;html+=`<div class="card" style="border-left:4px solid ${tot?'#C62828':'#276221'};background:${tot?'#FFEBEE':'#F1F8E9'}"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div class="card-title" style="color:${tot?'#C62828':'#276221'};margin:0">${tot?'&#9888;':'&#10003;'} Verification — ${tot?`${tot} items not in any WIP`:'Every development colourway and live PO is in a WIP'}</div>${tot?`<button class="btn btn-dark" style="padding:6px 12px;font-size:12px" onclick="downloadVerifCsv()">CSV</button>`:''}</div>${vf.cpMissing.length?`<div style="font-size:12px;font-weight:500;color:#C62828;margin-bottom:6px">Development colourways missing (${vf.cpMissing.length})</div><div style="background:#fff;border:1px solid #ef9a9a;border-radius:6px;overflow:hidden;margin-bottom:12px"><table class="tbl" style="margin:0"><thead><tr><th>SKU</th><th>Supplier</th><th>Tab</th><th>Reason</th></tr></thead><tbody>${vf.cpMissing.slice(0,20).map((r,i)=>`<tr class="${i%2?'row-even':''}"><td>${esc(r.sku)}</td><td>${esc(r.supplier)}</td><td style="font-size:11px">${esc(r.tab)}</td><td style="font-size:11px;color:#C62828">${esc(r.reason)}</td></tr>`).join('')}</tbody></table></div>`:''}${vf.atMissing.length?`<div style="font-size:12px;font-weight:500;color:#C62828;margin-bottom:6px">Live POs missing (${vf.atMissing.length})</div><div style="background:#fff;border:1px solid #ef9a9a;border-radius:6px;overflow:hidden"><table class="tbl" style="margin:0"><thead><tr><th>SKU Base</th><th>PO</th><th>Supplier</th><th>Status</th></tr></thead><tbody>${vf.atMissing.slice(0,20).map((r,i)=>`<tr class="${i%2?'row-even':''}"><td>${esc(r.skuBase)}</td><td>${esc(r.po)}</td><td>${esc(r.supplier)}</td><td style="font-size:11px">${esc(r.line_status||r.po_status)}</td></tr>`).join('')}</tbody></table></div>`:''}    </div>`;}
     if(S.buildState==='done'&&S.buildResults.length){
       html+=`<div class="card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><div class="card-title" style="margin:0">Build results — ${S.buildResults.length} files</div><button class="btn btn-dark" onclick="redownloadZip()">&#x2B07; Download ZIP</button></div><div class="result-grid">`;
       html+=S.buildResults.map(r=>`<div class="result-card"><div class="rc-name" title="${esc(r.supplier)}">${esc(r.supplier)}</div><div class="rc-rows"><span>${r.nr}</span> NR &middot; <span>${r.rs}</span> RS${r.removed?` &middot; <span style="color:#C62828">${r.removed}</span> review`:''}</div>${r.noHistory>0?`<div style="font-size:11px;color:#E65100;margin-top:3px">&#9888; ${r.noHistory} rows without comment history</div>`:`<div style="font-size:11px;color:#276221;margin-top:3px">&#10003; Comment history present</div>`}<div style="margin-top:6px"><a href="${S.outputFiles[r.fname]||'#'}" download="${esc(r.fname)}" style="font-size:11px;color:#1A1A2E">&#x2193; Download</a></div></div>`).join('');
@@ -830,7 +828,7 @@ function render(){
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
         <button class="btn" onclick="clearCommentCache()">Clear comment history</button>
-        <button class="btn" onclick="clearCpCache().then(()=>{S.cpStyles=null;S.cpFileInfo=null;toast('CP cache cleared');render()})">Clear CP cache</button>
+        
       </div>
       <div style="font-size:13px"><strong>${Object.keys(S.cachedComments).length}</strong> suppliers in comment cache:<br><span style="font-size:12px;color:#666">${Object.keys(S.cachedComments).map(s=>`${esc(s)} (W${S.cachedComments[s].week||'?'})`).join(' &middot; ')}</span></div>
     </div>`;
