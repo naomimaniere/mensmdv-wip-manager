@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>MDV WIP Builder — Menswear</title>
+<title>MDV WIP Builder</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111;background:#f4f4f4;min-height:100vh}
@@ -70,7 +70,24 @@ const MENS_PREFIXES=['MAN','UNX','ACC','SUN'];
 const SKIP_PO=new Set(['CANCELLED','CANCEL','DELIVERED','SHIPPED','PARTIALLY SHIPPED','SHIPPED UNDER OTHER PO']);
 const SKIP_LINE=new Set(['CANCELLED','CANCEL','DELIVERED','ARRIVED','FULLY SHIPPED','ON HOLD','SHIPPED','PARTIALLY SHIPPED','SHIPPED UNDER OTHER PO']);
 const CP_SKIP=new Set(['Pricing Matrix','Suppliers','freight','TEMPLATE','Reshoots','Production Tracker','AW26 RESTOCKS','MK101 replacements','restock checks','Return Updates','Cancelled','Next SKU','Merch - Roll Up','Template Trial View']);
-const GENDER='mens',GENDER_LABEL='Menswear';
+// ── DIVISION ── one file serves both apps. Resolution is explicit; nothing falls through:
+//   host begins 'mensmdv-wip-manager' -> Menswear        host begins 'mdv-wip-manager' -> Womenswear
+//   unknown host (localhost, preview): ?division=menswear|womenswear, else the choice remembered in this browser, else a chooser screen and the app does not start.
+//   On the two known hosts the hostname is authoritative; ?division= cannot override it.
+const DIVISION=(()=>{const h=location.hostname.toLowerCase();
+  if(h.startsWith('mensmdv-wip-manager'))return'menswear';
+  if(h.startsWith('mdv-wip-manager'))return'womenswear';
+  const q=new URLSearchParams(location.search).get('division');
+  if(q==='menswear'||q==='womenswear'){try{localStorage.setItem('mdv-wip-division',q)}catch(e){}return q;}
+  const saved=(()=>{try{return localStorage.getItem('mdv-wip-division')}catch(e){return null}})();
+  if(saved==='menswear'||saved==='womenswear')return saved;
+  return null;})();
+const IS_MENS=DIVISION==='menswear';
+const GENDER=IS_MENS?'mens':'womens',GENDER_LABEL=IS_MENS?'Menswear':'Womenswear';
+const OTHER_DIV=IS_MENS?'womenswear':'menswear',OTHER_LABEL=IS_MENS?'Womenswear':'Menswear';
+const ORPHAN_RX=IS_MENS?/^WMN/i:/^MAN/i;   // orphan PO with no colourway: the other division's SKU prefix is excluded, every other prefix surfaces
+const FILE_LABEL=IS_MENS?'Mens':'Womens';
+if(DIVISION)document.title='MDV WIP Builder \u2014 '+GENDER_LABEL;
 const WEEK=(()=>{const d=new Date(),j=new Date(d.getFullYear(),0,1);return Math.ceil((((d-j)/86400000)+j.getDay()+1)/7);})();
 const TODAY=new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
 const FIXED_COLS=[
@@ -332,7 +349,7 @@ function buildAllWipRows(cwMap,atData){
   const typeOf=info=>{const t=(info.po_type||'').toLowerCase();if(t.includes('repeat'))return'RESTOCK';if(t.includes('mix'))return'MIX';return'NEW RELEASE';};
   const costApp=cw=>{const s=((cw&&cw.costStatus)||'').trim();if(!s)return'';if(s==='Approved')return'YES';if(s==='Not Approved')return'NO';if(s==='Can be approved - in negotiation')return'IN NEGOTIATION';if(s==='Flagged')return'FLAGGED';return s.toUpperCase();};   // Approved->YES, Not Approved->NO, In negotiation / Flagged shown as-is, blank->blank, any new value shown verbatim
   const mkRow=(type,cw,info,po,atStatus,amber)=>({type,isRestock:false,sku:(cw&&cw.style)||(cw&&cw.skuBase)||'',skuBase:(cw&&cw.skuBase)||'',supplier:(cw&&cw.supplier)||'',po:po||'',atPo:po||'',name:(cw&&cw.name)||(info&&info.product_title)||'',colour:(cw&&cw.colour)||(info&&info.colour)||'',mbf:(cw&&cw.mbf)||'',stage:(cw&&cw.stage)||'',shoot:(cw&&cw.shoot)||'',tp:(cw&&cw.tp)||'',cost:(info&&info.cost)||'',costApproved:costApp(cw),csd1:'',csd2:'',csd3:'',csdpp:'',tier:(cw&&cw.tier)||'',release:(info&&info.release)||(cw&&cw.rmonth)||'',tab:'',atStatus:atStatus||'',atStatusType:amber?'amber':'normal',poSent:(info&&info.po_sent_date)||'',bulkSpec:(info&&info.bulk_spec_approval)||'',bulkFab:(info&&info.bulk_fabric_approval)||'',qcDate:(info&&info.qc_date)||'',handover:(info&&info.approved_handover_date)||''});
-  const _excl=cw=>((cw&&cw.division)||'').toLowerCase()==='womenswear';        // the other division -> never on this WIP
+  const _excl=cw=>((cw&&cw.division)||'').toLowerCase()===OTHER_DIV;        // the other division -> never on this WIP
   const isDev=cw=>{const p=(cw.productStatus||'').toLowerCase();return p!=='approved'&&p!=='cancelled';};
   const isCxl=cw=>(cw.productStatus||'').toLowerCase()==='cancelled';
   // Every colourway record, grouped by code (a code can sit with several suppliers)
@@ -361,7 +378,7 @@ function buildAllWipRows(cwMap,atData){
       const sup=poSup(skuBase,info);
       const cw=pickCw(skuBase,sup);
       if(cw&&_excl(cw))continue;                                  // other division's colourway
-      if(!cw&&/^WMN/i.test(skuBase))continue;                // no colourway at all -> SKU prefix decides
+      if(!cw&&ORPHAN_RX.test(skuBase))continue;                // no colourway at all -> SKU prefix decides
       const type=typeOf(info);
       const cwEff=cw?{...cw,supplier:sup}:{skuBase,supplier:sup};
       const atStatus=`${po} [${stat(info)}]`;
@@ -379,7 +396,7 @@ function checkSuppliers(cwMap,atData){const cpSet=new Set();for(const cw of Obje
 function verifyBuild(bySupplier,cwMap,atData){
   const inWip=new Set(),skuPosInWip=new Set();
   for(const[sup,bucket] of Object.entries(bySupplier)){for(const r of[...(bucket.nr||[]),...(bucket.rs||[]),...(bucket.removed||[])]){if(r.skuBase)inWip.add(r.skuBase+'||'+sup);if(r.atPo&&r.skuBase)skuPosInWip.add(`${r.skuBase}||${r.atPo}`);}}
-  const isOther=cw=>((cw&&cw.division)||'').toLowerCase()==='womenswear';
+  const isOther=cw=>((cw&&cw.division)||'').toLowerCase()===OTHER_DIV;
   const byCode={};for(const cw of Object.values(cwMap))(byCode[cw.skuBase]=byCode[cw.skuBase]||[]).push(cw);
   // development colourways (not Approved/Cancelled, this division) that are on no WIP under their own supplier
   const cpMissing=[],seen=new Set();
@@ -395,7 +412,7 @@ function verifyBuild(bySupplier,cwMap,atData){
   for(const[skuBase,pos] of Object.entries(atData.skuPoMap||{})){
     const recs=byCode[skuBase]||[];
     if(recs.length&&recs.every(isOther))continue;
-    if(!recs.length&&/^WMN/i.test(skuBase))continue;
+    if(!recs.length&&ORPHAN_RX.test(skuBase))continue;
     for(const[po,info] of Object.entries(pos)){if(skuPosInWip.has(`${skuBase}||${po}`))continue;atMissing.push({skuBase,po,supplier:info.supplier||'',product:info.product_title||'',line_status:info.line_status||'',po_status:info.po_status||''});}
   }
   cpMissing.sort((a,b)=>(a.supplier||'').localeCompare(b.supplier||'')||a.sku.localeCompare(b.sku));
@@ -643,7 +660,7 @@ async function runBuild(){
   if(!S.apiKey){toast('Add your Airtable API key in Settings');return;}
   S.buildState='fetching';S.buildLog=[];S.buildResults=[];S.buildProgress=0;S.outputFiles={};S.supplierCheck=null;S.verification=null;render();
   try{
-    log('Fetching colourways (Menswear — Sampling Division ≠ Womenswear)...');setProgress(5);
+    log(`Fetching colourways (${GENDER_LABEL} — Sampling Division ≠ ${OTHER_LABEL})...`);setProgress(5);
     const cwMap=await fetchColourways(n=>{log(`  ${n.toLocaleString()} colourways...`);});S.cwMap=cwMap;
     log(`  ${Object.keys(cwMap).length} colourway records loaded`,'ok');setProgress(20);
     log('Fetching live PO lines...');
@@ -722,7 +739,7 @@ async function runBuild(){
     if(!cpMissing.length&&!atMissing.length)log('  All development colourways and live POs accounted for','ok');
     else log(`  ${cpMissing.length} development colourways + ${atMissing.length} live POs not in any WIP`,'warn');
     setProgress(100);log(`Build complete — ${sups.length} files`,'ok');S.buildState='done';
-    const a=document.createElement('a');a.href=S.outputFiles['__ZIP__'];a.download=`MDV_Menswear_WIP_W${S.week}.zip`;a.click();
+    const a=document.createElement('a');a.href=S.outputFiles['__ZIP__'];a.download=`MDV_${GENDER_LABEL}_WIP_W${S.week}.zip`;a.click();
   }catch(e){log(`Error: ${e.message}`,'err');console.error(e);S.buildState='idle';}
   render();
 }
@@ -734,7 +751,7 @@ async function exportCache(){
     if(!all.length){toast('Nothing cached yet');return;}
     const blob=new Blob([JSON.stringify(all)],{type:'application/json'});
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-    a.download='MDV_Mens_WIP_Cache.json';a.click();
+    a.download=`MDV_${FILE_LABEL}_WIP_Cache.json`;a.click();
     toast('Cache exported — share this file with your team');
   }catch(e){toast('Export failed: '+e.message);}
 }
@@ -755,7 +772,7 @@ async function importCache(){
 // ═══ RENDER ═══
 function render(){
   const canBuild=!!(S.apiKey&&S.buildState==='idle');
-  let html=`<div class="header"><div><div class="h-title">MDV WIP Builder — Menswear</div><div class="h-sub">Week ${S.week} &middot; ${TODAY}</div></div><div style="color:rgba(255,255,255,.5);font-size:12px">${S.apiKey?'&#x1F7E2; Airtable connected':'&#x1F534; No API key'}</div></div>
+  let html=`<div class="header"><div><div class="h-title">MDV WIP Builder — ${GENDER_LABEL}</div><div class="h-sub">Week ${S.week} &middot; ${TODAY}</div></div><div style="color:rgba(255,255,255,.5);font-size:12px">${S.apiKey?'&#x1F7E2; Airtable connected':'&#x1F534; No API key'}</div></div>
   <div class="nav">${['build','tracker','history','settings'].map(t=>`<button class="ntab${S.tab===t?' active':''}" onclick="S.tab='${t}';render()">${t.charAt(0).toUpperCase()+t.slice(1)}</button>`).join('')}</div>
   <div class="page">`;
 
@@ -764,7 +781,7 @@ function render(){
     html+=`<div class="card"><div class="card-title">1 &middot; Source &mdash; Airtable</div>
       <div style="background:#EEF4FF;border:1px solid #BBDEFB;border-radius:8px;padding:12px 14px;font-size:13px;color:#0D47A1;line-height:1.6">
         Built live from Airtable &mdash; no Critical Path upload.<br>
-        <strong>Colourways</strong> (Sampling Division &ne; Womenswear) + <strong>live PO lines</strong> (no booking reference, not cancelled).
+        <strong>Colourways</strong> (Sampling Division &ne; ${OTHER_LABEL}) + <strong>live PO lines</strong> (no booking reference, not cancelled).
         <div style="font-size:11px;color:#555;margin-top:6px">Just add your API key in Settings and press Build.</div>
       </div></div>`;
     // Previous WIPs — FIX 2 clearer wording
@@ -813,7 +830,7 @@ function render(){
   else if(S.tab==='history'){
     html+=`<div class="card-title">Previous weeks</div>`;
     if(!S.history.length)html+=`<div style="text-align:center;padding:40px;color:#888">No history yet.</div>`;
-    else html+=S.history.slice().reverse().map(h=>`<div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px;margin-bottom:10px"><div><div style="font-size:14px;font-weight:500">Week ${h.week} &middot; ${h.gl||'Menswear'}</div><div style="font-size:12px;color:#888;margin-top:3px">${h.date} &middot; ${h.rec}/${h.tot} received &middot; ${h.rep} replied</div></div>${chip(h.rec===h.tot?'Complete &#10003;':(h.tot-h.rec)+' outstanding',h.rec===h.tot?'#276221':'#8B4513',h.rec===h.tot?'#C6EFCE':'#FFF2CC')}</div>`).join('');
+    else html+=S.history.slice().reverse().map(h=>`<div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px;margin-bottom:10px"><div><div style="font-size:14px;font-weight:500">Week ${h.week} &middot; ${h.gl||GENDER_LABEL}</div><div style="font-size:12px;color:#888;margin-top:3px">${h.date} &middot; ${h.rec}/${h.tot} received &middot; ${h.rep} replied</div></div>${chip(h.rec===h.tot?'Complete &#10003;':(h.tot-h.rec)+' outstanding',h.rec===h.tot?'#276221':'#8B4513',h.rec===h.tot?'#C6EFCE':'#FFF2CC')}</div>`).join('');
   }
   else if(S.tab==='settings'){
     html+=`<div class="card"><div class="card-title">Airtable API Key</div><label style="font-size:11px;font-weight:500;color:#666;display:block;margin-bottom:6px">PERSONAL ACCESS TOKEN</label><input class="inp" type="password" placeholder="pat..." value="${esc(S.apiKey)}" oninput="S.apiKey=this.value;localStorage.setItem('mdv-api-key',this.value);render()"><div style="font-size:12px;color:#888;margin-top:6px">Stored locally in your browser only. Required scopes on MDV Production &amp; Delivery: <code>data.records:read</code> to build, and <code>data.records:write</code> for Push WIP Status.</div></div>
@@ -846,11 +863,11 @@ function toggleTk(sup,field){if(!S.tracker[sup])S.tracker[sup]={received:false,r
 function setNote(sup,val){if(!S.tracker[sup])S.tracker[sup]={received:false,replied:false,notes:''};S.tracker[sup].notes=val;saveTracker();}
 function archiveWeek(){const sups=getSuppliers();const rec=sups.filter(s=>S.tracker[s]?.received).length;const rep=sups.filter(s=>S.tracker[s]?.replied).length;S.history=S.history.filter(h=>!(h.week===S.week&&h.gl===GENDER_LABEL));S.history.push({week:S.week,gl:GENDER_LABEL,date:TODAY,rec,rep,tot:sups.length});saveHistory();toast('Week '+S.week+' archived');render();}
 async function clearCommentCache(){if(!confirm('Clear all cached comment data?'))return;const all=await idbList(`uplus-${GENDER}-`);for(const e of all)await idbDelete(e.key);S.cachedComments={};toast('Cache cleared');render();}
-function redownloadZip(){const url=S.outputFiles['__ZIP__'];if(!url){toast('No zip available');return;}const a=document.createElement('a');a.href=url;a.download=`MDV_Menswear_WIP_W${S.week}.zip`;a.click();}
-function downloadVerifCsv(){const vf=S.verification;if(!vf){toast('Run a build first');return;}const ec=s=>{const v=String(s??'');if(/[",\n]/.test(v))return'"'+v.replace(/"/g,'""')+'"';return v;};const lines=['Source,SKU,PO,Supplier,Tab,Reason'];for(const r of vf.cpMissing)lines.push(['CP',r.sku,r.po||'',r.supplier,r.tab,r.reason].map(ec).join(','));for(const r of vf.atMissing)lines.push(['AT',r.skuBase,r.po,r.supplier,r.line_status,r.po_status].map(ec).join(','));const blob=new Blob([lines.join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`MDV_Mens_Verify_W${S.week}.csv`;a.click();}
+function redownloadZip(){const url=S.outputFiles['__ZIP__'];if(!url){toast('No zip available');return;}const a=document.createElement('a');a.href=url;a.download=`MDV_${GENDER_LABEL}_WIP_W${S.week}.zip`;a.click();}
+function downloadVerifCsv(){const vf=S.verification;if(!vf){toast('Run a build first');return;}const ec=s=>{const v=String(s??'');if(/[",\n]/.test(v))return'"'+v.replace(/"/g,'""')+'"';return v;};const lines=['Source,SKU,PO,Supplier,Tab,Reason'];for(const r of vf.cpMissing)lines.push(['CP',r.sku,r.po||'',r.supplier,r.tab,r.reason].map(ec).join(','));for(const r of vf.atMissing)lines.push(['AT',r.skuBase,r.po,r.supplier,r.line_status,r.po_status].map(ec).join(','));const blob=new Blob([lines.join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`MDV_${FILE_LABEL}_Verify_W${S.week}.csv`;a.click();}
 
-render();
-loadCachedInfo();
+if(DIVISION){render();loadCachedInfo();}
+else{document.body.innerHTML='<div style="max-width:420px;margin:120px auto;font-family:system-ui;text-align:center"><h2 style="margin-bottom:4px">MDV WIP Builder</h2><p style="color:#666;font-size:14px;margin-bottom:24px">This host is not one of the two known app URLs, so pick the division. The choice is remembered in this browser.</p><button style="display:block;width:100%;padding:14px;margin-bottom:10px;font-size:15px;border-radius:8px;border:1px solid #ccc;cursor:pointer" onclick="localStorage.setItem(\'mdv-wip-division\',\'menswear\');location.reload()">Menswear</button><button style="display:block;width:100%;padding:14px;font-size:15px;border-radius:8px;border:1px solid #ccc;cursor:pointer" onclick="localStorage.setItem(\'mdv-wip-division\',\'womenswear\');location.reload()">Womenswear</button></div>';}
 </script>
 </body>
 </html>
