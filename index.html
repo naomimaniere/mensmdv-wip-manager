@@ -182,7 +182,7 @@ async function fetchColourways(onProgress){const map={};let off=null,total=0;do{
 // PO Lines. Download scoped to non-womenswear (Gender "is not Women's" — robust to the duplicate-lookup bug).
 // A line is LIVE (kept) unless it has a booking reference OR is Cancelled at PO or line status.
 async function fetchAtData(onProgress){
-  const skuPoMap={},allPoBases=new Set();
+  const skuPoMap={},allPoBases=new Set(),doneMap={};
   const F='NOT({Shipment Reference})';   // un-booked POs only; gender is not used — division comes from the colourway
   const allRecs=[];let off=null;do{const d=await fetchAtPage(F,off);allRecs.push(...(d.records||[]));onProgress(allRecs.length);off=d.offset||null;}while(off);
   for(const r of allRecs){const c=r.fields||{};
@@ -210,7 +210,24 @@ async function fetchAtData(onProgress){
     else if(ls==='FULLY SHIPPED')_out=!(ps==='SHIPPED'||ps==='PART-SHIPPED');
     else if(ls==='')_out=(ps!=='SHIPPED');
     else _out=true;
-    if(!_out)continue;                                   // line done -> does not keep the PO on the WIP
+    if(!_out){                                           // line done -> does not keep the PO on the WIP; record why
+      let why;
+      if(hasBooking)why='Booking reference '+sr;
+      else if(ps==='CANCELLED')why='PO cancelled';
+      else if(ps==='DELIVERED')why='PO delivered';
+      else if(ls==='ARRIVED')why='Line arrived';
+      else if(ls==='CANCELLED')why='Line cancelled';
+      else if(ls==='SHIPPED UNDER OTHER PO')why='Line shipped under another PO';
+      else if(ls==='FULLY SHIPPED')why='Line fully shipped, PO '+(ps==='SHIPPED'?'shipped':'part-shipped');
+      else if(ls==='')why='PO shipped, no line status';
+      else why='Line '+ls;
+      const k=skuBase+'||'+po;const e=doneMap[k]||(doneMap[k]={skuBase,po,supplier:'',product:'',release:'',ps,reasons:new Set()});
+      e.reasons.add(why);
+      if(!e.supplier){const v=String(getAtVal(c['fldMnCMSWz1XO8nCo'])||'').trim();if(v&&v!=='nan')e.supplier=normSupplier(v);}
+      if(!e.product){const v=String(getAtVal(c['fldutZNE72EdAT2mU'])||'').trim();if(v&&v!=='nan')e.product=v;}
+      if(!e.release){const v=String(getAtVal(c['fldGKnrTB0ls25pge'])||'').trim();if(v&&v!=='nan')e.release=v;}
+      continue;
+    }
     if(!skuPoMap[skuBase])skuPoMap[skuBase]={};
     if(!skuPoMap[skuBase][po])skuPoMap[skuBase][po]={line_status:'',po_status:'',po_type:'',po_sent_date:'',bulk_spec_approval:'',bulk_fabric_approval:'',qc_date:'',approved_handover_date:'',supplier:'',release:'',product_title:'',colour:'',cost:''};
     const d=skuPoMap[skuBase][po];
@@ -219,7 +236,9 @@ async function fetchAtData(onProgress){
     const fm={'fldMnCMSWz1XO8nCo':'supplier','fldGKnrTB0ls25pge':'release','fldFDHkhZGUowIRhq':'po_sent_date','fldZCgFjUzcRB6QV7':'bulk_spec_approval','fld7bZKCwQKvLYKk9':'bulk_fabric_approval','fldV2NaeBOuZfeOBj':'qc_date','fldLTJu4MYP5IXxK3':'approved_handover_date','fldutZNE72EdAT2mU':'product_title','fldHXxrmrOmo4jLDV':'colour','fldWaLqQk9z6AT8lX':'cost'};
     for(const[fid,fn]of Object.entries(fm)){const v=String(getAtVal(c[fid])||'').trim();if(v&&v!=='nan'&&!d[fn])d[fn]=fn==='supplier'?normSupplier(v):v;}
   }
-  return{skuPoMap,allPoBases,total:allRecs.length};
+  // A PO is only off the WIP when EVERY downloaded line is done; a PO with any outstanding line stays.
+  const closedPos=Object.values(doneMap).filter(e=>!(skuPoMap[e.skuBase]&&skuPoMap[e.skuBase][e.po])).map(e=>({...e,reasons:[...e.reasons]}));
+  return{skuPoMap,allPoBases,closedPos,total:allRecs.length};
 }
 
 // ═══ CP PARSER ═══
@@ -418,6 +437,65 @@ function verifyBuild(bySupplier,cwMap,atData){
   cpMissing.sort((a,b)=>(a.supplier||'').localeCompare(b.supplier||'')||a.sku.localeCompare(b.sku));
   atMissing.sort((a,b)=>(a.supplier||'').localeCompare(b.supplier||'')||a.po.localeCompare(b.po));
   return{cpMissing,atMissing};
+}
+
+// ── NOT ON THE WIP — every record that didn't make a WIP, with the reason ──
+//   Listed:  ⚠ should be on the WIP (anomalies) · colourways all Cancelled · colourways Approved with no open PO
+//            · colourways Approved whose open PO sits with another supplier · POs whose every line is done (reason per line)
+//   Counted, not listed: the other division's colourways and POs (they belong on the other division's WIP)
+//   Not downloaded: PO lines with a booking reference (shipped)
+function explainExclusions(bySupplier,cwMap,atData,vf){
+  const rows=[];
+  const inWip=new Set(),skuPosInWip=new Set(),openSupByCode={};
+  for(const[sup,bucket] of Object.entries(bySupplier)){for(const r of[...(bucket.nr||[]),...(bucket.rs||[]),...(bucket.removed||[])]){if(r.skuBase)inWip.add(r.skuBase+'||'+sup);if(r.atPo&&r.skuBase){skuPosInWip.add(r.skuBase+'||'+r.atPo);(openSupByCode[r.skuBase]=openSupByCode[r.skuBase]||new Set()).add(sup);}}}
+  const isOther=cw=>((cw&&cw.division)||'').toLowerCase()===OTHER_DIV;
+  const byCode={};for(const cw of Object.values(cwMap))(byCode[cw.skuBase]=byCode[cw.skuBase]||[]).push(cw);
+  const closedByCode={};for(const e of(atData.closedPos||[]))(closedByCode[e.skuBase]=closedByCode[e.skuBase]||[]).push(e.po);
+  const SHOULD='⚠ Should be on the WIP — check';
+  for(const r of vf.cpMissing)rows.push({cat:SHOULD,kind:'Colourway',sku:r.sku,po:'',supplier:r.supplier,name:r.name,release:'',status:'In development',why:r.reason==='no supplier on colourway'?'No supplier on the colourway':'Not built — check'});
+  for(const r of vf.atMissing)rows.push({cat:SHOULD,kind:'PO',sku:r.skuBase,po:r.po,supplier:r.supplier,name:r.product,release:'',status:r.line_status||r.po_status,why:'Open PO not built — check'});
+  // colourways, one row per code + supplier (same grouping as the build)
+  let otherCw=0;const groups={};
+  for(const cw of Object.values(cwMap)){if(isOther(cw)){otherCw++;continue;}const k=cw.skuBase+'||'+(cw.supplier||'UNASSIGNED');(groups[k]=groups[k]||[]).push(cw);}
+  for(const[k,recs] of Object.entries(groups)){
+    if(inWip.has(k))continue;
+    const sup=recs[0].supplier||'';const code=recs[0].skuBase;
+    const st=recs.map(cw=>(cw.productStatus||'').toLowerCase());
+    const allCxl=st.every(x=>x==='cancelled');
+    const allApprOrCxl=st.every(x=>x==='approved'||x==='cancelled');
+    if(!allApprOrCxl)continue;                        // in development but not built: already listed above as ⚠
+    const cw=recs.find(r=>(r.productStatus||'').toLowerCase()==='approved')||recs[0];
+    const others=[...(openSupByCode[code]||[])].filter(x=>x!==(sup||'UNASSIGNED'));
+    const closed=closedByCode[code]||[];
+    let cat,why;
+    if(allCxl){cat='Colourway cancelled';why='Cancelled'+(others.length?` — open PO is with ${others.join(', ')}`:'');}
+    else if(others.length){cat='Approved — open PO is with another supplier';why=`Open PO is with ${others.join(', ')}`;}
+    else{cat='Approved — no open PO';why=closed.length?`All POs done (${[...new Set(closed)].join(', ')})`:'No open PO in Airtable';}
+    rows.push({cat,kind:'Colourway',sku:cw.style,po:'',supplier:sup,name:cw.name||'',release:cw.rmonth||'',status:[...new Set(recs.map(r=>r.productStatus||'blank'))].join(' / '),why});
+  }
+  // POs where every line is done
+  let otherPo=0;
+  for(const e of(atData.closedPos||[])){
+    const recs=byCode[e.skuBase]||[];
+    if((recs.length&&recs.every(isOther))||(!recs.length&&ORPHAN_RX.test(e.skuBase))){otherPo++;continue;}
+    rows.push({cat:'PO done — '+(e.reasons.length===1?e.reasons[0]:'mixed line statuses'),kind:'PO',sku:e.skuBase,po:e.po,supplier:e.supplier,name:e.product||((recs[0]||{}).name)||'',release:e.release,status:e.ps||'',why:e.reasons.join('; ')});
+  }
+  // the other division's live POs that were dropped (not listed)
+  for(const[skuBase,pos] of Object.entries(atData.skuPoMap||{}))for(const po of Object.keys(pos))if(!skuPosInWip.has(skuBase+'||'+po)&&!vf.atMissing.some(a=>a.skuBase===skuBase&&a.po===po))otherPo++;
+  const order=c=>c===SHOULD?0:c.startsWith('Approved')?1:c.startsWith('Colourway')?2:3;
+  rows.sort((a,b)=>order(a.cat)-order(b.cat)||a.cat.localeCompare(b.cat)||(a.supplier||'').localeCompare(b.supplier||'')||a.sku.localeCompare(b.sku)||(a.po||'').localeCompare(b.po||''));
+  return{rows,otherCw,otherPo,should:SHOULD};
+}
+function drawExcl(){
+  const el=document.getElementById('excl-dyn');const X=S.excl;if(!el||!X)return;
+  const cats={};for(const r of X.rows)cats[r.cat]=(cats[r.cat]||0)+1;
+  const cur=S.exclCat&&(S.exclCat==='all'||cats[S.exclCat])?S.exclCat:'all';
+  const q=(S.exclQ||'').trim().toLowerCase();
+  const list=X.rows.filter(r=>(cur==='all'||r.cat===cur)&&(!q||[r.sku,r.po,r.supplier,r.name,r.release,r.why].join(' ').toLowerCase().includes(q)));
+  const chipB=(key,label,n)=>{const on=key===cur,warn=key===X.should;return`<button class="btn" style="padding:5px 11px;font-size:12px;border-radius:99px;margin:0 6px 6px 0;${on?'background:#1A1A2E;color:#fff;border-color:#1A1A2E':warn?'color:#C62828;border-color:#ef9a9a':''}" onclick="S.exclCat=${JSON.stringify(key).replace(/"/g,'&quot;')};drawExcl()">${esc(label)} <span style="opacity:.7">${n}</span></button>`;};
+  const MAX=150;
+  el.innerHTML=`<div style="margin-bottom:8px">${chipB('all','All',X.rows.length)}${Object.entries(cats).map(([c,n])=>chipB(c,c,n)).join('')}</div>`+
+   (list.length?`<div style="border:1px solid #e5e5e5;border-radius:6px;overflow:auto;max-height:460px"><table class="tbl" style="margin:0;font-size:12px"><thead><tr><th>SKU</th><th>PO</th><th>Supplier</th><th>Product</th><th>Release</th><th>Status</th><th>Why not on the WIP</th></tr></thead><tbody>${list.slice(0,MAX).map((r,i)=>`<tr class="${i%2?'row-even':''}"><td style="white-space:nowrap">${esc(r.sku)}</td><td style="white-space:nowrap">${esc(r.po)}</td><td>${esc(r.supplier||'(none)')}</td><td>${esc(r.name)}</td><td style="font-size:11px">${esc(r.release)}</td><td style="font-size:11px">${esc(r.status)}</td><td style="font-size:11px;color:${r.cat===X.should?'#C62828':'#444'}">${esc(r.why)}</td></tr>`).join('')}</tbody></table></div>${list.length>MAX?`<div style="font-size:11px;color:#888;margin-top:6px">Showing ${MAX} of ${list.length}. Download the CSV for the full list.</div>`:''}`:`<div style="font-size:12px;color:#888;padding:8px 0">Nothing matches.</div>`);
 }
 
 // ═══ EXCEL WRITER ═══
@@ -658,7 +736,7 @@ async function runBuild(){
   if(S.buildState!=='idle')return;
   // source is Airtable — no CP upload
   if(!S.apiKey){toast('Add your Airtable API key in Settings');return;}
-  S.buildState='fetching';S.buildLog=[];S.buildResults=[];S.buildProgress=0;S.outputFiles={};S.supplierCheck=null;S.verification=null;render();
+  S.buildState='fetching';S.buildLog=[];S.buildResults=[];S.buildProgress=0;S.outputFiles={};S.supplierCheck=null;S.verification=null;S.excl=null;render();
   try{
     log(`Fetching colourways (${GENDER_LABEL} — Sampling Division ≠ ${OTHER_LABEL})...`);setProgress(5);
     const cwMap=await fetchColourways(n=>{log(`  ${n.toLocaleString()} colourways...`);});S.cwMap=cwMap;
@@ -738,6 +816,8 @@ async function runBuild(){
     const{cpMissing,atMissing}=S.verification;
     if(!cpMissing.length&&!atMissing.length)log('  All development colourways and live POs accounted for','ok');
     else log(`  ${cpMissing.length} development colourways + ${atMissing.length} live POs not in any WIP`,'warn');
+    S.excl=explainExclusions(bySupplier,S.cwMap,S.atData,S.verification);S.exclCat=(cpMissing.length||atMissing.length)?S.excl.should:'all';S.exclQ='';
+    log(`  ${S.excl.rows.length} records not on the WIP — reasons listed below`);
     setProgress(100);log(`Build complete — ${sups.length} files`,'ok');S.buildState='done';
     const a=document.createElement('a');a.href=S.outputFiles['__ZIP__'];a.download=`MDV_${GENDER_LABEL}_WIP_W${S.week}.zip`;a.click();
   }catch(e){log(`Error: ${e.message}`,'err');console.error(e);S.buildState='idle';}
@@ -814,7 +894,7 @@ function render(){
     html+=`<div style="text-align:center;margin-bottom:20px"><button class="btn btn-green" ${canBuild?'':'disabled'} onclick="runBuild()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>${S.buildState==='fetching'?'Fetching Airtable...':S.buildState==='building'?'Building WIPs...':'Build WIP Charts'}</button>${!S.apiKey?'<div style="font-size:12px;color:#e65100;margin-top:8px">Add Airtable API key in Settings</div>':''}</div>`;
     if(S.buildState!=='idle'){html+=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:13px;font-weight:500">Build progress</span><span style="font-size:12px;color:#888">${S.buildProgress}%</span></div><div class="progress-wrap"><div class="progress-bar" id="build-pb" style="width:${S.buildProgress}%"></div></div><div class="log" id="build-log">${S.buildLog.map(l=>`<p class="log-line ${l.type}">${esc(l.msg)}</p>`).join('')}</div></div>`;}
     /* supplier check removed: CP vs Airtable name comparison no longer applies */
-    if(S.buildState==='done'&&S.verification){const vf=S.verification,tot=vf.cpMissing.length+vf.atMissing.length;html+=`<div class="card" style="border-left:4px solid ${tot?'#C62828':'#276221'};background:${tot?'#FFEBEE':'#F1F8E9'}"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div class="card-title" style="color:${tot?'#C62828':'#276221'};margin:0">${tot?'&#9888;':'&#10003;'} Verification — ${tot?`${tot} items not in any WIP`:'Every development colourway and live PO is in a WIP'}</div>${tot?`<button class="btn btn-dark" style="padding:6px 12px;font-size:12px" onclick="downloadVerifCsv()">CSV</button>`:''}</div>${vf.cpMissing.length?`<div style="font-size:12px;font-weight:500;color:#C62828;margin-bottom:6px">Development colourways missing (${vf.cpMissing.length})</div><div style="background:#fff;border:1px solid #ef9a9a;border-radius:6px;overflow:hidden;margin-bottom:12px"><table class="tbl" style="margin:0"><thead><tr><th>SKU</th><th>Supplier</th><th>Tab</th><th>Reason</th></tr></thead><tbody>${vf.cpMissing.slice(0,20).map((r,i)=>`<tr class="${i%2?'row-even':''}"><td>${esc(r.sku)}</td><td>${esc(r.supplier)}</td><td style="font-size:11px">${esc(r.tab)}</td><td style="font-size:11px;color:#C62828">${esc(r.reason)}</td></tr>`).join('')}</tbody></table></div>`:''}${vf.atMissing.length?`<div style="font-size:12px;font-weight:500;color:#C62828;margin-bottom:6px">Live POs missing (${vf.atMissing.length})</div><div style="background:#fff;border:1px solid #ef9a9a;border-radius:6px;overflow:hidden"><table class="tbl" style="margin:0"><thead><tr><th>SKU Base</th><th>PO</th><th>Supplier</th><th>Status</th></tr></thead><tbody>${vf.atMissing.slice(0,20).map((r,i)=>`<tr class="${i%2?'row-even':''}"><td>${esc(r.skuBase)}</td><td>${esc(r.po)}</td><td>${esc(r.supplier)}</td><td style="font-size:11px">${esc(r.line_status||r.po_status)}</td></tr>`).join('')}</tbody></table></div>`:''}    </div>`;}
+    if(S.buildState==='done'&&S.excl){const X=S.excl,nShould=X.rows.filter(r=>r.cat===X.should).length;html+=`<div class="card" style="border-left:4px solid ${nShould?'#C62828':'#276221'}"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px"><div class="card-title" style="margin:0">Not on the WIP — ${X.rows.length} record${X.rows.length===1?'':'s'}</div><button class="btn btn-dark" style="padding:6px 12px;font-size:12px" onclick="downloadVerifCsv()">Download CSV</button></div><div style="font-size:12px;color:${nShould?'#C62828':'#276221'};margin-bottom:6px">${nShould?`&#9888; ${nShould} should be on the WIP but aren't — check these first.`:'&#10003; Every development colourway and open PO is on a WIP.'}</div><div style="font-size:11px;color:#888;margin-bottom:12px">Not listed: ${X.otherCw.toLocaleString()} ${OTHER_LABEL} colourways and ${X.otherPo.toLocaleString()} ${OTHER_LABEL} PO entries (they're on the ${OTHER_LABEL} WIP). PO lines with a booking reference aren't downloaded.</div><input class="inp" style="margin-bottom:10px" placeholder="Search SKU, PO, supplier, product…" value="${esc(S.exclQ||'')}" oninput="S.exclQ=this.value;drawExcl()"><div id="excl-dyn"></div></div>`;}
     if(S.buildState==='done'&&S.buildResults.length){
       html+=`<div class="card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><div class="card-title" style="margin:0">Build results — ${S.buildResults.length} files</div><button class="btn btn-dark" onclick="redownloadZip()">&#x2B07; Download ZIP</button></div><div class="result-grid">`;
       html+=S.buildResults.map(r=>`<div class="result-card"><div class="rc-name" title="${esc(r.supplier)}">${esc(r.supplier)}</div><div class="rc-rows"><span>${r.nr}</span> NR &middot; <span>${r.rs}</span> RS${r.removed?` &middot; <span style="color:#C62828">${r.removed}</span> review`:''}</div>${r.noHistory>0?`<div style="font-size:11px;color:#E65100;margin-top:3px">&#9888; ${r.noHistory} rows without comment history</div>`:`<div style="font-size:11px;color:#276221;margin-top:3px">&#10003; Comment history present</div>`}<div style="margin-top:6px"><a href="${S.outputFiles[r.fname]||'#'}" download="${esc(r.fname)}" style="font-size:11px;color:#1A1A2E">&#x2193; Download</a></div></div>`).join('');
@@ -852,6 +932,7 @@ function render(){
   }
   html+='</div>';
   document.getElementById('app').innerHTML=html;
+  drawExcl();
   if(S.tab==='build'){
     setupDrop('wip-drop',files=>{const x=files.filter(f=>f.name.endsWith('.xlsx'));x.forEach(f=>{if(!S.prevWipFiles.find(e=>e.name===f.name))S.prevWipFiles.push({name:f.name,file:f});});render();});
     const logEl=document.getElementById('build-log');if(logEl)logEl.scrollTop=logEl.scrollHeight;
@@ -864,7 +945,7 @@ function setNote(sup,val){if(!S.tracker[sup])S.tracker[sup]={received:false,repl
 function archiveWeek(){const sups=getSuppliers();const rec=sups.filter(s=>S.tracker[s]?.received).length;const rep=sups.filter(s=>S.tracker[s]?.replied).length;S.history=S.history.filter(h=>!(h.week===S.week&&h.gl===GENDER_LABEL));S.history.push({week:S.week,gl:GENDER_LABEL,date:TODAY,rec,rep,tot:sups.length});saveHistory();toast('Week '+S.week+' archived');render();}
 async function clearCommentCache(){if(!confirm('Clear all cached comment data?'))return;const all=await idbList(`uplus-${GENDER}-`);for(const e of all)await idbDelete(e.key);S.cachedComments={};toast('Cache cleared');render();}
 function redownloadZip(){const url=S.outputFiles['__ZIP__'];if(!url){toast('No zip available');return;}const a=document.createElement('a');a.href=url;a.download=`MDV_${GENDER_LABEL}_WIP_W${S.week}.zip`;a.click();}
-function downloadVerifCsv(){const vf=S.verification;if(!vf){toast('Run a build first');return;}const ec=s=>{const v=String(s??'');if(/[",\n]/.test(v))return'"'+v.replace(/"/g,'""')+'"';return v;};const lines=['Source,SKU,PO,Supplier,Tab,Reason'];for(const r of vf.cpMissing)lines.push(['CP',r.sku,r.po||'',r.supplier,r.tab,r.reason].map(ec).join(','));for(const r of vf.atMissing)lines.push(['AT',r.skuBase,r.po,r.supplier,r.line_status,r.po_status].map(ec).join(','));const blob=new Blob([lines.join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`MDV_${FILE_LABEL}_Verify_W${S.week}.csv`;a.click();}
+function downloadVerifCsv(){const X=S.excl;if(!X){toast('Run a build first');return;}const ec=s=>{const v=String(s??'');if(/[",\n]/.test(v))return'"'+v.replace(/"/g,'""')+'"';return v;};const lines=['Category,Type,SKU,PO,Supplier,Product,Release,Status,Why not on the WIP'];for(const r of X.rows)lines.push([r.cat,r.kind,r.sku,r.po,r.supplier,r.name,r.release,r.status,r.why].map(ec).join(','));const blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`MDV_${FILE_LABEL}_Not_On_WIP_W${S.week}.csv`;a.click();}
 
 if(DIVISION){render();loadCachedInfo();}
 else{document.body.innerHTML='<div style="max-width:420px;margin:120px auto;font-family:system-ui;text-align:center"><h2 style="margin-bottom:4px">MDV WIP Builder</h2><p style="color:#666;font-size:14px;margin-bottom:24px">This host is not one of the two known app URLs, so pick the division. The choice is remembered in this browser.</p><button style="display:block;width:100%;padding:14px;margin-bottom:10px;font-size:15px;border-radius:8px;border:1px solid #ccc;cursor:pointer" onclick="localStorage.setItem(\'mdv-wip-division\',\'menswear\');location.reload()">Menswear</button><button style="display:block;width:100%;padding:14px;font-size:15px;border-radius:8px;border:1px solid #ccc;cursor:pointer" onclick="localStorage.setItem(\'mdv-wip-division\',\'womenswear\');location.reload()">Womenswear</button></div>';}
