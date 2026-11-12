@@ -158,7 +158,9 @@ const CW_FILTER='';   // fetch ALL colourways; menswear vs womenswear decided in
 function canonPo(p){let s=String(p||'').replace(/\s+/g,'').trim();if(!s)return'';return /^PO/i.test(s)?s.replace(/^PO-?/i,'PO-'):s;}
 
 async function fetchCwPage(offset){const fq=CW_FIELDS.map(f=>`fields%5B%5D=${f}`).join('&');const url=`https://api.airtable.com/v0/${AT_BASE}/${CW_TABLE}?pageSize=100&returnFieldsByFieldId=true&cellFormat=string&timeZone=Europe%2FLondon&userLocale=en-gb&${fq}${CW_FILTER?'&filterByFormula='+encodeURIComponent(CW_FILTER):''}${offset?'&offset='+encodeURIComponent(offset):''}`;for(let a=0;a<4;a++){const r=await fetch(url,{headers:{'Authorization':`Bearer ${S.apiKey}`}});if(r.status===429&&a<3){await new Promise(x=>setTimeout(x,1500*(a+1)));continue;}if(!r.ok)throw new Error(`AT colourway ${r.status}: ${await r.text()}`);return r.json();}}
-async function fetchColourways(onProgress){const map={};let off=null,total=0;do{const d=await fetchCwPage(off);for(const r of(d.records||[])){const c=r.fields||{};const style=String(getAtVal(c[CW_F.style])||'').trim();if(!style)continue;const skuBase=style.split('-').slice(0,2).join('-');if(!map[skuBase]){map[skuBase]={skuBase,style,division:String(getAtVal(c[CW_F.div])||'').trim(),productStatus:String(getAtVal(c[CW_F.pstatus])||'').trim(),costStatus:String(getAtVal(c[CW_F.cstatus])||'').trim(),tier:String(getAtVal(c[CW_F.tier])||'').trim(),supplier:normSupplier(getAtVal(c[CW_F.sup])),colour:String(getAtVal(c[CW_F.colour])||'').trim(),name:String(getAtVal(c[CW_F.name])||'').trim(),tp:fmtDateStr(getAtVal(c[CW_F.tp])),stage:String(getAtVal(c[CW_F.stage])||'').trim(),shoot:String(getAtVal(c[CW_F.shoot])||'').trim(),mbf:String(getAtVal(c[CW_F.mbf])||'').trim(),rmonth:String(getAtVal(c[CW_F.rmonth])||'').trim()};total++;}}onProgress(total);off=d.offset||null;}while(off);return map;}
+async function fetchColourways(onProgress){const map={};let off=null,total=0;do{const d=await fetchCwPage(off);for(const r of(d.records||[])){const c=r.fields||{};const style=String(getAtVal(c[CW_F.style])||'').trim();if(!style)continue;const skuBase=style.split('-').slice(0,2).join('-');
+  // keep EVERY colourway record. One code can have several records (counter sourcing / a second supplier), each with its own supplier and status.
+  map[skuBase+'||'+r.id]={recId:r.id,skuBase,style,division:String(getAtVal(c[CW_F.div])||'').trim(),productStatus:String(getAtVal(c[CW_F.pstatus])||'').trim(),costStatus:String(getAtVal(c[CW_F.cstatus])||'').trim(),tier:String(getAtVal(c[CW_F.tier])||'').trim(),supplier:normSupplier(getAtVal(c[CW_F.sup])),colour:String(getAtVal(c[CW_F.colour])||'').trim(),name:String(getAtVal(c[CW_F.name])||'').trim(),tp:fmtDateStr(getAtVal(c[CW_F.tp])),stage:String(getAtVal(c[CW_F.stage])||'').trim(),shoot:String(getAtVal(c[CW_F.shoot])||'').trim(),mbf:String(getAtVal(c[CW_F.mbf])||'').trim(),rmonth:String(getAtVal(c[CW_F.rmonth])||'').trim()};total++;}onProgress(total);off=d.offset||null;}while(off);return map;}
 
 // PO Lines. Download scoped to non-womenswear (Gender "is not Women's" — robust to the duplicate-lookup bug).
 // A line is LIVE (kept) unless it has a booking reference OR is Cancelled at PO or line status.
@@ -175,7 +177,23 @@ async function fetchAtData(onProgress){
     const ls=String(getAtVal(c['fldRkRlWGV612tmnd'])||'').trim().toUpperCase();
     const sr=String(getAtVal(c['fldPmxdxfFGo2gLzz'])||'').trim();
     const hasBooking=!!(sr&&sr!=='nan');
-    const _DONE=new Set(['CANCELLED','DELIVERED','ARRIVED','SHIPPED UNDER OTHER PO']);   // done by status alone. SHIPPED / FULLY SHIPPED are done ONLY via a booking reference (hasBooking). A PO stays if ANY line is not done.if(hasBooking||_DONE.has(ps)||_DONE.has(ls))continue;   // excluded: booked, or cancelled
+    // ── Is this line still outstanding? Every status is named; nothing falls through silently. ──
+    //  booking reference                                   -> done
+    //  PO header CANCELLED or DELIVERED                    -> done (whole PO closed)
+    //  line AWAITING SHIPMENT / DUBAI HOLD / QC FAIL AND REWORK -> outstanding
+    //  line ARRIVED / CANCELLED / SHIPPED UNDER OTHER PO   -> done
+    //  line FULLY SHIPPED -> done if header SHIPPED or PART-SHIPPED; outstanding if header still open (shipped but PO never closed)
+    //  line blank         -> done if header SHIPPED; outstanding if header DRAFT / PO SENT / CONFIRMED / AWAITING SHIPMENT / ON HOLD / PART-SHIPPED / blank
+    //  any other line status value -> outstanding (kept visible so a new status is noticed)
+    let _out;
+    if(hasBooking)_out=false;
+    else if(ps==='CANCELLED'||ps==='DELIVERED')_out=false;
+    else if(ls==='AWAITING SHIPMENT'||ls==='DUBAI HOLD'||ls==='QC FAIL AND REWORK')_out=true;
+    else if(ls==='ARRIVED'||ls==='CANCELLED'||ls==='SHIPPED UNDER OTHER PO')_out=false;
+    else if(ls==='FULLY SHIPPED')_out=!(ps==='SHIPPED'||ps==='PART-SHIPPED');
+    else if(ls==='')_out=(ps!=='SHIPPED');
+    else _out=true;
+    if(!_out)continue;                                   // line done -> does not keep the PO on the WIP
     if(!skuPoMap[skuBase])skuPoMap[skuBase]={};
     if(!skuPoMap[skuBase][po])skuPoMap[skuBase][po]={line_status:'',po_status:'',po_type:'',po_sent_date:'',bulk_spec_approval:'',bulk_fabric_approval:'',qc_date:'',approved_handover_date:'',supplier:'',release:'',product_title:'',colour:'',cost:''};
     const d=skuPoMap[skuBase][po];
@@ -314,30 +332,40 @@ function buildAllWipRows(cwMap,atData){
   const typeOf=info=>{const t=(info.po_type||'').toLowerCase();if(t.includes('repeat'))return'RESTOCK';if(t.includes('mix'))return'MIX';return'NEW RELEASE';};
   const costApp=cw=>{const s=((cw&&cw.costStatus)||'').toLowerCase();if(!s)return'';if(s.includes('approv'))return'YES';if(s.includes('revision')||s.includes('reject'))return'NO';return'';};
   const mkRow=(type,cw,info,po,atStatus,amber)=>({type,isRestock:false,sku:(cw&&cw.style)||(cw&&cw.skuBase)||'',skuBase:(cw&&cw.skuBase)||'',supplier:(cw&&cw.supplier)||'',po:po||'',atPo:po||'',name:(cw&&cw.name)||(info&&info.product_title)||'',colour:(cw&&cw.colour)||(info&&info.colour)||'',mbf:(cw&&cw.mbf)||'',stage:(cw&&cw.stage)||'',shoot:(cw&&cw.shoot)||'',tp:(cw&&cw.tp)||'',cost:(info&&info.cost)||'',costApproved:costApp(cw),csd1:'',csd2:'',csd3:'',csdpp:'',tier:(cw&&cw.tier)||'',release:(info&&info.release)||(cw&&cw.rmonth)||'',tab:'',atStatus:atStatus||'',atStatusType:amber?'amber':'normal',poSent:(info&&info.po_sent_date)||'',bulkSpec:(info&&info.bulk_spec_approval)||'',bulkFab:(info&&info.bulk_fabric_approval)||'',qcDate:(info&&info.qc_date)||'',handover:(info&&info.approved_handover_date)||''});
+  const _excl=cw=>((cw&&cw.division)||'').toLowerCase()==='womenswear';        // the other division -> never on this WIP
+  const isDev=cw=>{const p=(cw.productStatus||'').toLowerCase();return p!=='approved'&&p!=='cancelled';};
+  const isCxl=cw=>(cw.productStatus||'').toLowerCase()==='cancelled';
+  // Every colourway record, grouped by code (a code can sit with several suppliers)
+  const byCode={};for(const cw of Object.values(cwMap))(byCode[cw.skuBase]=byCode[cw.skuBase]||[]).push(cw);
+  // The colourway record behind a PO: same supplier first, then not-cancelled before cancelled
+  const pickCw=(skuBase,sup)=>{const recs=byCode[skuBase]||[];if(!recs.length)return null;const rank=cw=>(sup&&cw.supplier===sup?0:2)+(isCxl(cw)?1:0);return recs.slice().sort((a,b)=>rank(a)-rank(b))[0];};
+  // Supplier each live PO files under: the PO's own supplier, else its colourway's supplier, else UNASSIGNED
+  const poSup=(skuBase,info)=>(info.supplier?normSupplier(info.supplier):'')||((pickCw(skuBase,'')||{}).supplier)||'UNASSIGNED';
+  const liveAt={};for(const[skuBase,pos] of Object.entries(atData.skuPoMap))for(const info of Object.values(pos))liveAt[skuBase+'||'+poSup(skuBase,info)]=true;
 
-  // PASS 1
-  const _isW=cw=>((cw&&cw.division)||'').toLowerCase()==='womenswear';
-  for(const cw of Object.values(cwMap)){
-    if(_isW(cw))continue;                                          // womenswear -> not on the menswear WIP
-    if(atData.skuPoMap[cw.skuBase])continue;                       // has a LIVE PO -> shown via Pass 2 (cancelled/done POs don't count)
-    const p=(cw.productStatus||'').toLowerCase();
-    if(p==='approved'||p==='cancelled')continue;                   // excluded (explicit)
-    const _sup=cw.supplier||'UNASSIGNED';                          // no supplier yet -> surface in an Unassigned file
-    ensureSup(_sup).nr.push(mkRow('NEW RELEASE',{...cw,supplier:_sup},null,'',''));
+  // PASS 1 — development rows: one per (colourway code, supplier)
+  //   included: at least one record for that code+supplier is not Approved and not Cancelled,
+  //             AND that supplier has no live PO for the code (the PO row in Pass 2 covers it)
+  //   excluded: other division; every record Approved/Cancelled; a live PO exists with that same supplier
+  const groups={};
+  for(const cw of Object.values(cwMap)){if(_excl(cw))continue;const k=cw.skuBase+'||'+(cw.supplier||'UNASSIGNED');(groups[k]=groups[k]||[]).push(cw);}
+  for(const[k,recs] of Object.entries(groups)){
+    const dev=recs.filter(isDev);if(!dev.length)continue;
+    if(liveAt[k])continue;
+    const cw=dev[0];const sup=cw.supplier||'UNASSIGNED';
+    ensureSup(sup).nr.push(mkRow('NEW RELEASE',{...cw,supplier:sup},null,'',''));
   }
-  // PASS 2
+  // PASS 2 — one row per live PO, filed under the supplier holding the PO
   for(const[skuBase,pos] of Object.entries(atData.skuPoMap)){
-    const cw=cwMap[skuBase]||null;
-    if(_isW(cw))continue;                                          // womenswear colourway -> its POs are not menswear
-    if(!cw&&/^WMN/i.test(skuBase))continue;                        // orphan PO, no colourway -> use SKU prefix: WMN is not menswear
     for(const[po,info] of Object.entries(pos)){
+      const sup=poSup(skuBase,info);
+      const cw=pickCw(skuBase,sup);
+      if(cw&&_excl(cw))continue;                                  // other division's colourway
+      if(!cw&&/^WMN/i.test(skuBase))continue;                // no colourway at all -> SKU prefix decides
       const type=typeOf(info);
-      const sup=(info.supplier?normSupplier(info.supplier):'')||(cw&&cw.supplier)||'UNASSIGNED';
       const cwEff=cw?{...cw,supplier:sup}:{skuBase,supplier:sup};
       const atStatus=`${po} [${stat(info)}]`;
-      const cwDiv=cw?cw:null;
-      // Flag when the PO exists but there's no menswear colourway behind it (anomaly to check)
-      const amber=!cw;
+      const amber=!cw;                                            // live PO with no colourway behind it -> flag
       if(type==='RESTOCK'){
         ensureSup(sup).rs.push({type:'RESTOCK',isRestock:true,sku:skuBase,skuBase,supplier:sup,po:'',atPo:po,name:(cw&&cw.name)||info.product_title||'',colour:(cw&&cw.colour)||info.colour||'',mbf:'',stage:'',shoot:'',tp:'',cost:info.cost||'',costApproved:'',csd1:'',csd2:'',csd3:'',csdpp:'',tier:(cw&&cw.tier)||'',release:info.release||(cw&&cw.rmonth)||'',tab:'',atStatus:amber?atStatus+'  ⚠ no colourway':atStatus,atStatusType:amber?'amber':'normal',poSent:info.po_sent_date||'',bulkSpec:info.bulk_spec_approval||'',bulkFab:info.bulk_fabric_approval||'',qcDate:info.qc_date||'',handover:info.approved_handover_date||''});
       }else{
@@ -349,20 +377,27 @@ function buildAllWipRows(cwMap,atData){
 }
 function checkSuppliers(cwMap,atData){const cpSet=new Set();for(const cw of Object.values(cwMap))if(cw.supplier)cpSet.add(cw.supplier);const atSet=new Set();for(const pos of Object.values(atData.skuPoMap))for(const info of Object.values(pos))if(info.supplier)atSet.add(normSupplier(info.supplier));return{matchedCount:[...cpSet].filter(s=>atSet.has(s)).length,cpOnly:[...cpSet].filter(s=>!atSet.has(s)).sort(),atOnly:[...atSet].filter(s=>!cpSet.has(s)).sort()};}
 function verifyBuild(bySupplier,cwMap,atData){
-  const skusInWip=new Set(),skuPosInWip=new Set();
-  for(const bucket of Object.values(bySupplier)){for(const r of[...(bucket.nr||[]),...(bucket.rs||[]),...(bucket.removed||[])]){if(r.sku)skusInWip.add(r.sku);if(r.skuBase)skusInWip.add(r.skuBase);if(r.atPo&&r.skuBase)skuPosInWip.add(`${r.skuBase}||${r.atPo}`);}}
-  const cpMissing=[];
+  const inWip=new Set(),skuPosInWip=new Set();
+  for(const[sup,bucket] of Object.entries(bySupplier)){for(const r of[...(bucket.nr||[]),...(bucket.rs||[]),...(bucket.removed||[])]){if(r.skuBase)inWip.add(r.skuBase+'||'+sup);if(r.atPo&&r.skuBase)skuPosInWip.add(`${r.skuBase}||${r.atPo}`);}}
+  const isOther=cw=>((cw&&cw.division)||'').toLowerCase()==='womenswear';
+  const byCode={};for(const cw of Object.values(cwMap))(byCode[cw.skuBase]=byCode[cw.skuBase]||[]).push(cw);
+  // development colourways (not Approved/Cancelled, this division) that are on no WIP under their own supplier
+  const cpMissing=[],seen=new Set();
   for(const cw of Object.values(cwMap)){
-    if(((cw.division||'').toLowerCase())==='womenswear')continue;    // other division -> not this WIP's concern
-    if(skusInWip.has(cw.style)||skusInWip.has(cw.skuBase))continue;
-    if(atData.skuPoMap[cw.skuBase])continue;                       // has a live PO -> shown via its PO row
-    const p=(cw.productStatus||'').toLowerCase();
-    if(p==='approved'||p==='cancelled')continue;                   // legitimately excluded
-    let reason=!cw.supplier?'no supplier on colourway':'not built (check)';
-    cpMissing.push({sku:cw.style,supplier:cw.supplier||'',name:cw.name||'',tab:cw.division||'',po:'',reason});
+    if(isOther(cw))continue;
+    const p=(cw.productStatus||'').toLowerCase();if(p==='approved'||p==='cancelled')continue;
+    const sup=cw.supplier||'UNASSIGNED';const k=cw.skuBase+'||'+sup;
+    if(inWip.has(k)||seen.has(k))continue;seen.add(k);
+    cpMissing.push({sku:cw.style,supplier:cw.supplier||'',name:cw.name||'',tab:cw.division||'',po:'',reason:!cw.supplier?'no supplier on colourway':'not built (check)'});
   }
+  // live POs (this division) that are on no WIP
   const atMissing=[];
-  for(const[skuBase,pos] of Object.entries(atData.skuPoMap||{})){const _cw=cwMap[skuBase];if(_cw&&((_cw.division||'').toLowerCase())==='womenswear')continue;for(const[po,info] of Object.entries(pos)){if(skuPosInWip.has(`${skuBase}||${po}`))continue;atMissing.push({skuBase,po,supplier:info.supplier||'',product:info.product_title||'',line_status:info.line_status||'',po_status:info.po_status||''});}}
+  for(const[skuBase,pos] of Object.entries(atData.skuPoMap||{})){
+    const recs=byCode[skuBase]||[];
+    if(recs.length&&recs.every(isOther))continue;
+    if(!recs.length&&/^WMN/i.test(skuBase))continue;
+    for(const[po,info] of Object.entries(pos)){if(skuPosInWip.has(`${skuBase}||${po}`))continue;atMissing.push({skuBase,po,supplier:info.supplier||'',product:info.product_title||'',line_status:info.line_status||'',po_status:info.po_status||''});}
+  }
   cpMissing.sort((a,b)=>(a.supplier||'').localeCompare(b.supplier||'')||a.sku.localeCompare(b.sku));
   atMissing.sort((a,b)=>(a.supplier||'').localeCompare(b.supplier||'')||a.po.localeCompare(b.po));
   return{cpMissing,atMissing};
@@ -612,7 +647,7 @@ async function runBuild(){
   try{
     log('Fetching colourways (Menswear — Sampling Division ≠ Womenswear)...');setProgress(5);
     const cwMap=await fetchColourways(n=>{log(`  ${n.toLocaleString()} colourways...`);});S.cwMap=cwMap;
-    log(`  ${Object.keys(cwMap).length} menswear colourways`,'ok');setProgress(20);
+    log(`  ${Object.keys(cwMap).length} colourway records loaded`,'ok');setProgress(20);
     log('Fetching live PO lines...');
     S.atData=await fetchAtData(n=>{if(n-(S._lastN||0)>=5000){log(`  ${n.toLocaleString()} PO lines...`);S._lastN=n;}});S._lastN=0;
     log(`  ${Object.keys(S.atData.skuPoMap).length} SKU bases with live POs`,'ok');setProgress(30);
