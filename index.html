@@ -816,11 +816,11 @@ function render(){
     else html+=S.history.slice().reverse().map(h=>`<div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px;margin-bottom:10px"><div><div style="font-size:14px;font-weight:500">Week ${h.week} &middot; ${h.gl||'Menswear'}</div><div style="font-size:12px;color:#888;margin-top:3px">${h.date} &middot; ${h.rec}/${h.tot} received &middot; ${h.rep} replied</div></div>${chip(h.rec===h.tot?'Complete &#10003;':(h.tot-h.rec)+' outstanding',h.rec===h.tot?'#276221':'#8B4513',h.rec===h.tot?'#C6EFCE':'#FFF2CC')}</div>`).join('');
   }
   else if(S.tab==='settings'){
-    html+=`<div class="card"><div class="card-title">Airtable API Key</div><label style="font-size:11px;font-weight:500;color:#666;display:block;margin-bottom:6px">PERSONAL ACCESS TOKEN</label><input class="inp" type="password" placeholder="pat..." value="${esc(S.apiKey)}" oninput="S.apiKey=this.value;localStorage.setItem('mdv-api-key',this.value);render()"><div style="font-size:12px;color:#888;margin-top:6px">Stored locally in your browser only. Required scope: <code>data.records:read</code> on MDV Production &amp; Delivery.</div></div>
+    html+=`<div class="card"><div class="card-title">Airtable API Key</div><label style="font-size:11px;font-weight:500;color:#666;display:block;margin-bottom:6px">PERSONAL ACCESS TOKEN</label><input class="inp" type="password" placeholder="pat..." value="${esc(S.apiKey)}" oninput="S.apiKey=this.value;localStorage.setItem('mdv-api-key',this.value);render()"><div style="font-size:12px;color:#888;margin-top:6px">Stored locally in your browser only. Required scopes on MDV Production &amp; Delivery: <code>data.records:read</code> to build, and <code>data.records:write</code> for Push WIP Status.</div></div>
     <div class="card"><div class="card-title">Cache &amp; Sync</div>
       <div style="background:#FFF8E7;border:1px solid #F9A825;border-radius:8px;padding:12px 14px;font-size:13px;margin-bottom:14px">
         <strong>&#9888; Cache is per-browser — not shared between users.</strong><br>
-        Each person (Naomi, Amana, Racie) has their own independent cache. Use Export/Import below to stay in sync. Whoever runs the weekly build should export and share the cache file with the others.
+        Everyone who uses this app has their own independent cache. Use Export/Import below to stay in sync. Whoever runs the weekly build should export and share the cache file with the others.
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
         <button class="btn btn-dark" onclick="exportCache()">&#x2B07; Export cache (share with team)</button>
